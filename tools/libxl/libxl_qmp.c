@@ -347,6 +347,7 @@ static libxl__qmp_handler *qmp_init_handler(libxl__gc *gc, uint32_t domid)
     }
     qmp->ctx = CTX;
     qmp->domid = domid;
+
     qmp->timeout = 5;
 
     LIBXL_STAILQ_INIT(&qmp->callback_list);
@@ -1067,6 +1068,125 @@ int libxl__qmp_nbd_server_add(libxl__gc *gc, int domid, const char *disk)
     qmp_parameters_add_bool(gc, &args, "writable", true);
 
     return qmp_run_command(gc, domid, "nbd-server-add", args, NULL, NULL);
+}
+
+int libxl__qmp_drive_mirror(libxl__gc *gc, int domid, const char* device, const char* target, const char* format)
+{
+    libxl__json_object *args = NULL;
+    qmp_parameters_add_string(gc, &args, "device", device);
+    qmp_parameters_add_string(gc, &args, "target", target);
+    qmp_parameters_add_string(gc, &args, "sync", "full");
+    qmp_parameters_add_string(gc, &args, "format", format);
+    qmp_parameters_add_string(gc, &args, "mode", "existing");
+    qmp_parameters_add_integer(gc, &args, "granularity", 0);
+    qmp_parameters_add_integer(gc, &args, "buf-size", 0);
+
+    return qmp_run_command(gc, domid, "drive-mirror", args, NULL, NULL);
+}
+
+static int query_block_callback(libxl__qmp_handler *qmp,
+                               const libxl__json_object *response,
+                               void *opaque)
+{
+    const libxl__json_object *blockinfo = NULL;
+    GC_INIT(qmp->ctx);
+    int i, rc = -1;
+
+    for (i = 0; (blockinfo = libxl__json_array_get(response, i)); i++) {
+        const libxl__json_object *d;
+        const char* device_name;
+        d = libxl__json_map_get("device", blockinfo, JSON_STRING);
+        if(!d){
+            goto out;
+        }
+        device_name = libxl__json_object_get_string(d);
+    }
+
+    rc = 0;
+out:
+    GC_FREE;
+    return rc;
+}
+
+static int query_block_jobs_callback(libxl__qmp_handler *qmp,
+                               const libxl__json_object *response,
+                               void *opaque)
+{
+    const libxl__json_object *blockjobinfo = NULL;
+    GC_INIT(qmp->ctx);
+    int i, rc = -1;
+    bool empty = true;
+
+    for (i = 0; (blockjobinfo = libxl__json_array_get(response, i)); i++) {
+        empty = false;
+        const char *type;
+        const char *device;
+        unsigned int len;
+        unsigned int offset;
+        bool busy;
+        bool paused;
+        const char *iostatus;
+        bool ready;
+
+        const libxl__json_object *type_o = NULL;
+        const libxl__json_object *device_o = NULL;
+        const libxl__json_object *len_o = NULL;
+        const libxl__json_object *offset_o = NULL;
+        const libxl__json_object *busy_o = NULL;
+        const libxl__json_object *paused_o = NULL;
+        const libxl__json_object *io_status_o = NULL;
+        const libxl__json_object *ready_o = NULL;
+
+        type_o = libxl__json_map_get("type", blockjobinfo, JSON_STRING);
+        device_o = libxl__json_map_get("device", blockjobinfo, JSON_STRING);
+        len_o = libxl__json_map_get("len", blockjobinfo, JSON_INTEGER);
+        offset_o = libxl__json_map_get("offset", blockjobinfo, JSON_INTEGER);
+        busy_o = libxl__json_map_get("busy", blockjobinfo, JSON_BOOL);
+        paused_o = libxl__json_map_get("type", blockjobinfo, JSON_BOOL);
+        io_status_o = libxl__json_map_get("io-status", blockjobinfo, JSON_STRING);
+        ready_o = libxl__json_map_get("ready", blockjobinfo, JSON_BOOL);
+
+        type = libxl__json_object_get_string(type_o);
+        device = libxl__json_object_get_string(device_o);
+        len = libxl__json_object_get_integer(len_o);
+        offset = libxl__json_object_get_integer(offset_o);
+        busy = libxl__json_object_get_bool(len_o);
+        paused = libxl__json_object_get_bool(paused_o);
+        iostatus = libxl__json_object_get_string(io_status_o);
+        ready = libxl__json_object_get_bool(ready_o);
+
+        bool *is_ready = opaque;
+        *is_ready = ready;
+    }
+
+    if(empty){
+        bool *is_ready = opaque;
+        *is_ready = true;
+    }
+
+    rc = 0;
+
+    GC_FREE;
+    return rc;
+}
+
+int libxl__qmp_query_block(libxl__gc *gc, int domid, char *device_names)
+{
+    return qmp_run_command(gc, domid, "query-block", NULL, query_block_callback, device_names);
+}
+
+int libxl__qmp_query_block_jobs(libxl__gc *gc, int domid, bool *is_ready)
+{
+    return qmp_run_command(gc, domid, "query-block-jobs", NULL, query_block_jobs_callback, is_ready);
+}
+
+int libxl__qmp_migrate_incoming(libxl__gc *gc, int domid, const char* uri)
+{
+    libxl__json_object *args = NULL;
+
+    qmp_parameters_add_string(gc, &args, "uri", uri);
+
+    return qmp_run_command(gc, domid, "migrate-incoming", args, NULL, NULL);
 }
 
 int libxl__qmp_start_replication(libxl__gc *gc, int domid, bool primary)
