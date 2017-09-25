@@ -538,7 +538,7 @@ value stub_libxl_domain_create_restore(value ctx, value domain_config, value par
 
 	caml_enter_blocking_section();
 	ret = libxl_domain_create_restore(CTX, &c_dconfig, &c_domid, restore_fd,
-		-1, &c_params, ao_how, NULL);
+		-1, 0, &c_params, ao_how, NULL);
 	caml_leave_blocking_section();
 
 	free(ao_how);
@@ -611,7 +611,7 @@ value stub_libxl_domain_suspend(value ctx, value domid, value fd, value async, v
 	libxl_asyncop_how *ao_how = aohow_val(async);
 
 	caml_enter_blocking_section();
-	ret = libxl_domain_suspend(CTX, c_domid, c_fd, 0, ao_how);
+	ret = libxl_domain_suspend(CTX, c_domid, c_fd, 0, NULL, ao_how);
 	caml_leave_blocking_section();
 
 	free(ao_how);
