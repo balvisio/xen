@@ -157,7 +157,8 @@ static void migrate_do_preamble(int send_fd, int recv_fd, pid_t child,
 }
 
 static void migrate_domain(uint32_t domid, const char *rune, int debug,
-                           const char *override_config_file)
+                           const char *override_config_file,
+                           int mirror_disks, const char* hostname)
 {
     pid_t child = -1;
     int rc;
@@ -185,7 +186,10 @@ static void migrate_domain(uint32_t domid, const char *rune, int debug,
 
     if (debug)
         flags |= LIBXL_SUSPEND_DEBUG;
-    rc = libxl_domain_suspend(ctx, domid, send_fd, flags, NULL);
+    if(mirror_disks)
+        flags |= LIBXL_SUSPEND_MIRROR_DISKS;
+    rc = libxl_domain_suspend(ctx, domid, send_fd, recv_fd, flags, hostname,
+                              NULL);
     if (rc) {
         fprintf(stderr, "migration sender: libxl_domain_suspend failed"
                 " (rc=%d)\n", rc);
@@ -296,7 +300,7 @@ static void migrate_domain(uint32_t domid, const char *rune, int debug,
 }
 
 static void migrate_receive(int debug, int daemonize, int monitor,
-                            int pause_after_migration,
+                            int pause_after_migration, int mirror_disks,
                             int send_fd, int recv_fd,
                             libxl_checkpointed_stream checkpointed,
                             char *colo_proxy_script,
@@ -323,6 +327,7 @@ static void migrate_receive(int debug, int daemonize, int monitor,
     dom_info.daemonize = daemonize;
     dom_info.monitor = monitor;
     dom_info.paused = 1;
+    dom_info.mirror_disks = mirror_disks;
     dom_info.migrate_fd = recv_fd;
     dom_info.send_back_fd = send_fd;
     dom_info.migration_domname_r = &migration_domname;
@@ -458,6 +463,7 @@ static void migrate_receive(int debug, int daemonize, int monitor,
 int main_migrate_receive(int argc, char **argv)
 {
     int debug = 0, daemonize = 1, monitor = 1, pause_after_migration = 0;
+    int mirror_disks = 0;
     libxl_checkpointed_stream checkpointed = LIBXL_CHECKPOINTED_STREAM_NONE;
     int opt;
     bool userspace_colo_proxy = false;
@@ -470,7 +476,7 @@ int main_migrate_receive(int argc, char **argv)
         COMMON_LONG_OPTS
     };
 
-    SWITCH_FOREACH_OPT(opt, "Fedrp", opts, "migrate-receive", 0) {
+    SWITCH_FOREACH_OPT(opt, "Fedrpq", opts, "migrate-receive", 0) {
     case 'F':
         daemonize = 0;
         break;
@@ -496,6 +502,9 @@ int main_migrate_receive(int argc, char **argv)
     case 'p':
         pause_after_migration = 1;
         break;
+    case 'q':
+        mirror_disks = 1;
+        break;
     }
 
     if (argc-optind != 0) {
@@ -503,7 +512,7 @@ int main_migrate_receive(int argc, char **argv)
         return EXIT_FAILURE;
     }
     migrate_receive(debug, daemonize, monitor, pause_after_migration,
-                    STDOUT_FILENO, STDIN_FILENO,
+                    mirror_disks, STDOUT_FILENO, STDIN_FILENO,
                     checkpointed, script, userspace_colo_proxy);
 
     return EXIT_SUCCESS;
@@ -516,14 +525,16 @@ int main_migrate(int argc, char **argv)
     const char *ssh_command = "ssh";
     char *rune = NULL;
     char *host;
+    char *hostname;
     int opt, daemonize = 1, monitor = 1, debug = 0, pause_after_migration = 0;
+    int mirror_disks = 0;
     static struct option opts[] = {
         {"debug", 0, 0, 0x100},
         {"live", 0, 0, 0x200},
         COMMON_LONG_OPTS
     };
 
-    SWITCH_FOREACH_OPT(opt, "FC:s:ep", opts, "migrate", 2) {
+    SWITCH_FOREACH_OPT(opt, "FC:s:epq", opts, "migrate", 2) {
     case 'C':
         config_filename = optarg;
         break;
@@ -540,6 +551,9 @@ int main_migrate(int argc, char **argv)
     case 'p':
         pause_after_migration = 1;
         break;
+    case 'q':
+        mirror_disks = 1;
+        break;
     case 0x100: /* --debug */
         debug = 1;
         break;
@@ -550,6 +564,9 @@ int main_migrate(int argc, char **argv)
 
     domid = find_domain(argv[optind]);
     host = argv[optind + 1];
+
+    hostname = strchr(host, '@');
+    hostname++;
 
     bool pass_tty_arg = progress_use_cr || (isatty(2) > 0);
 
@@ -567,16 +584,18 @@ int main_migrate(int argc, char **argv)
         } else {
             verbose_len = (minmsglevel_default - minmsglevel) + 2;
         }
-        xasprintf(&rune, "exec %s %s xl%s%.*s migrate-receive%s%s%s",
+        xasprintf(&rune, "exec %s %s xl%s%.*s migrate-receive%s%s%s%s",
                   ssh_command, host,
                   pass_tty_arg ? " -t" : "",
                   verbose_len, verbose_buf,
                   daemonize ? "" : " -e",
                   debug ? " -d" : "",
-                  pause_after_migration ? " -p" : "");
+                  pause_after_migration ? " -p" : "",
+                  mirror_disks ? " -q" : "");
     }
 
-    migrate_domain(domid, rune, debug, config_filename);
+    migrate_domain(domid, rune, debug, config_filename, mirror_disks,
+                   hostname);
     return EXIT_SUCCESS;
 }
 

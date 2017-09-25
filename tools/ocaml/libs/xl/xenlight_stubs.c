@@ -602,16 +602,18 @@ value stub_libxl_domain_destroy(value ctx, value domid, value async, value unit)
 	CAMLreturn(Val_unit);
 }
 
-value stub_libxl_domain_suspend(value ctx, value domid, value fd, value async, value unit)
+value stub_libxl_domain_suspend(value ctx, value domid, value fd, value recv_fd,
+								value async, value unit)
 {
 	CAMLparam5(ctx, domid, fd, async, unit);
 	int ret;
 	uint32_t c_domid = Int_val(domid);
 	int c_fd = Int_val(fd);
+	int c_recv_fd = Int_val(recv_fd);
 	libxl_asyncop_how *ao_how = aohow_val(async);
 
 	caml_enter_blocking_section();
-	ret = libxl_domain_suspend(CTX, c_domid, c_fd, 0, ao_how);
+	ret = libxl_domain_suspend(CTX, c_domid, c_fd, c_recv_fd, 0, NULL, ao_how);
 	caml_leave_blocking_section();
 
 	free(ao_how);
