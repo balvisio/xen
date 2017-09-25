@@ -882,8 +882,9 @@ start:
 
         ret = libxl_domain_create_restore(ctx, &d_config,
                                           &domid, restore_fd,
-                                          send_back_fd, &params,
-                                          0, autoconnect_console_how);
+                                          send_back_fd,
+                                          dom_info->mirror_qemu_disks,
+                                          &params, 0, autoconnect_console_how);
 
         libxl_domain_restore_params_dispose(&params);
 
