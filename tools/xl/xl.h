@@ -35,6 +35,7 @@ struct domain_create {
     int daemonize;
     int monitor; /* handle guest reboots etc */
     int paused;
+    int mirror_qemu_disk;
     int dryrun;
     int quiet;
     int vnc;
