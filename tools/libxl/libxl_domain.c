@@ -487,7 +487,7 @@ static void domain_suspend_cb(libxl__egc *egc,
 }
 
 int libxl_domain_suspend(libxl_ctx *ctx, uint32_t domid, int fd, int flags,
-                         const libxl_asyncop_how *ao_how)
+                         const char* hostname, const libxl_asyncop_how *ao_how)
 {
     AO_CREATE(ctx, domid, ao_how);
     int rc;
