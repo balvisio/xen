@@ -257,6 +257,7 @@ int main(int argc, char **argv)
         int hvm =                           atoi(NEXTARG);
         unsigned cbflags =                  strtoul(NEXTARG,0,10);
         xc_migration_stream_t stream_type = strtoul(NEXTARG,0,10);
+        int mirror_qemu_disks =                   atoi(NEXTARG);
         assert(!*++argv);
 
         helper_setcallbacks_save(&helper_save_callbacks, cbflags);
@@ -266,7 +267,7 @@ int main(int argc, char **argv)
 
         r = xc_domain_save(xch, io_fd, dom, max_iters, max_factor, flags,
                            &helper_save_callbacks, hvm, stream_type,
-                           recv_fd);
+                           recv_fd, mirror_qemu_disks);
         complete(r);
 
     } else if (!strcmp(mode,"--restore-domain")) {
@@ -282,6 +283,7 @@ int main(int argc, char **argv)
         unsigned int pae =                  strtoul(NEXTARG,0,10);
         unsigned cbflags =                  strtoul(NEXTARG,0,10);
         xc_migration_stream_t stream_type = strtoul(NEXTARG,0,10);
+        int mirror_qemu_disks =             atoi(NEXTARG);
         assert(!*++argv);
 
         helper_setcallbacks_restore(&helper_restore_callbacks, cbflags);
