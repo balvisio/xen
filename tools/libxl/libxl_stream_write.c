@@ -335,7 +335,24 @@ static void stream_header_done(libxl__egc *egc,
 static void libxc_header_done(libxl__egc *egc,
                               libxl__stream_write_state *stream)
 {
-    libxl__xc_domain_save(egc, stream->dss, &stream->shs);
+    int save_mirror_qemu_disks = stream->dss->mirror_qemu_disks;
+    libxl__xc_domain_save(egc, stream->dss, &stream->shs,
+                          save_mirror_qemu_disks + stream->mirror_qemu_disks);
+}
+
+void libxl__xc_mirror_disks_save_done(libxl__egc *egc, void *dss_void,
+                                    int rc, int retval, int errnoval)
+{
+    libxl__domain_save_state *dss = dss_void;
+    libxl__stream_write_state *stream = &dss->sws_mirror_qemu_disks;
+    STATE_AO_GC(dss->ao);
+
+    check_all_finished(egc, stream, rc);
+
+    if (stream->in_checkpoint)
+        write_checkpoint_end_record(egc, stream);
+    else
+        write_emulator_xenstore_record(egc, stream);
 }
 
 void libxl__xc_domain_save_done(libxl__egc *egc, void *dss_void,
@@ -429,9 +446,12 @@ static void emulator_xenstore_record_done(libxl__egc *egc,
 {
     libxl__domain_save_state *dss = stream->dss;
 
-    if (dss->type == LIBXL_DOMAIN_TYPE_HVM)
-        write_emulator_context_record(egc, stream);
-    else {
+    if (dss->type == LIBXL_DOMAIN_TYPE_HVM) {
+        if(!stream->mirror_qemu_disks)
+            write_emulator_context_record(egc, stream);
+        else
+            write_end_record(egc, stream);
+    } else {
         if (stream->in_checkpoint)
             write_checkpoint_end_record(egc, stream);
         else
