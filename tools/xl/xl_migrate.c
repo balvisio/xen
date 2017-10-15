@@ -427,17 +427,6 @@ static void migrate_receive(int debug, int daemonize, int monitor,
 
     fprintf(stderr, "migration target: Got permission, starting domain.\n");
 
-    if(mirror_qemu_disks){
-        fprintf(stderr, "migration target: Stopping NBD server\n");
-        rc = libxl__nbd_server_stop(ctx, domid);
-        if (rc){
-            rc = 0; //For now, mask the error if NBD server fails to stop
-            fprintf(stderr, "Failed to stop NBD server\n");
-        }else{
-            fprintf(stderr, "Stopped NBD server successfully\n");
-        }
-    }
-
     if (migration_domname) {
         rc = libxl_domain_rename(ctx, domid, migration_domname, common_domname);
         if (rc) goto perhaps_destroy_notify_rc;
