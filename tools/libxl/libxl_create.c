@@ -744,6 +744,10 @@ static int store_libxl_entry(libxl__gc *gc, uint32_t domid,
 static void domcreate_devmodel_started(libxl__egc *egc,
                                        libxl__dm_spawn_state *dmss,
                                        int rc);
+
+static void start_nbd_server(libxl__egc *egc, libxl__dm_spawn_state *dmss,
+                             int ret);
+
 static void domcreate_bootloader_console_available(libxl__egc *egc,
                                                    libxl__bootloader_state *bl);
 static void domcreate_bootloader_done(libxl__egc *egc,
@@ -760,9 +764,16 @@ static void domcreate_stream_done(libxl__egc *egc,
                                   libxl__stream_read_state *srs,
                                   int ret);
 
+static void domcreate_pre_build(libxl__egc *egc,
+                                libxl__domain_create_state *dcs,
+                                int ret);
+
 static void domcreate_rebuild_done(libxl__egc *egc,
                                    libxl__domain_create_state *dcs,
                                    int ret);
+
+static void domcreate_multidev_begin(libxl__egc *egc,
+                                     libxl__domain_create_state *dcs);
 
 /* Our own function to clean up and call the user's callback.
  * The final call in the sequence. */
@@ -1016,6 +1027,64 @@ static void libxl__colo_restore_setup_done(libxl__egc *egc,
     libxl__stream_read_start(egc, &dcs->srs);
 }
 
+static void start_nbd_server(libxl__egc *egc, libxl__dm_spawn_state *dmss,
+                             int ret){
+
+    libxl__domain_create_state *dcs = CONTAINER_OF(dmss, *dcs, sdss.dm);
+    STATE_AO_GC(dmss->spawn.ao);
+    const uint32_t domid = dcs->guest_domid;
+    dcs->sdss.dm.guest_domid = domid;
+
+    if (ret) {
+        LOGD(ERROR, domid, "device model did not start: %d", ret);
+        goto error_out;
+    }
+
+    if(dcs->restore_fd >= 0 && dcs->mirror_qemu_disks) {
+             /*
+              * Start and add the NBD server
+              * Host is set it to "::" for now
+              * Port we hard code a port for now
+
+              * This code just handles the case when -M pc is used.
+              * (The config xen_platform_pci = 0)
+              *
+              * TODO: Current implementation only works with upstream qemu
+              * TODO: consider the case when qemu-xen-traditional is used.
+              * TODO: Check and copy only those disks which are local
+              * TODO: Assign port dynamically
+              */
+
+            LOGD(DEBUG, "Starting NBD Server\n");
+            ret = libxl__qmp_nbd_server_start(gc, domid, "::", QEMU_DRIVE_MIRROR_PORT);
+            if (ret) {
+                ret = ERROR_FAIL;
+                LOGD(ERROR, "Failed to start NBD Server\n");
+                goto skip_nbd;
+            }else{
+                LOGD(INFO, "Started NBD Server Successfully\n");
+            }
+
+            ret = libxl__qmp_nbd_server_add(gc, domid, QEMU_DRIVE_MIRROR_DEVICE);
+
+            if (ret) {
+                ret = ERROR_FAIL;
+                LOGD(ERROR, "Failed to add NBD Server\n");
+                goto skip_nbd;
+            } else {
+                LOGD(INFO, "NBD Add Successful\n");
+            }
+        }
+
+skip_nbd:
+    libxl__stream_read_start(egc, &dcs->srs);
+    return;
+
+error_out:
+    assert(ret);
+    domcreate_complete(egc, dcs, ret);
+}
+
 static void domcreate_bootloader_done(libxl__egc *egc,
                                       libxl__bootloader_state *bl,
                                       int rc)
@@ -1033,6 +1102,8 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     libxl_domain_build_info *const info = &d_config->b_info;
     libxl__srm_restore_autogen_callbacks *const callbacks =
         &dcs->srs.shs.callbacks.restore.a;
+    libxl__srm_restore_autogen_callbacks *const callbacks_mirror_qemu_disks =
+        &dcs->srs_local_disks.shs.callbacks.restore.a;
 
     if (rc) {
         domcreate_rebuild_done(egc, dcs, rc);
@@ -1050,8 +1121,41 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     dcs->sdss.dm.spawn.ao = ao;
     dcs->sdss.dm.guest_config = dcs->guest_config;
     dcs->sdss.dm.build_state = &dcs->build_state;
-    dcs->sdss.dm.callback = domcreate_devmodel_started;
-    dcs->sdss.callback = domcreate_devmodel_started;
+    if(!dcs->mirror_qemu_disks) {
+        dcs->sdss.dm.callback = domcreate_devmodel_started;
+        dcs->sdss.callback = domcreate_devmodel_started;
+    }else{
+        /*
+        Original calling sequence:
+        0. domcreate_bootloader_done
+        1. MEMORY STREAM
+        2. domcreate_stream_done
+        3. domcreate_pre_build
+        4. domcreate_rebuild_done
+        5. domcreate_multidev_begin
+        6. domcreate_launch_dm
+        7. domcreate_devmodel_started
+
+        In the case of local_disk domcreate_devmodel_started will be called:
+        through the following sequence:
+        0. domcreate_bootloader_done
+        1. 1st MEMORY STREAM
+        2. domcreate_stream_done
+        3. domcreate_pre_build
+        4. domcreate_rebuild_done
+        5. domcreate_multidev_begin
+        6. domcreate_launch_dm
+        7. start_nbd_server
+        8. 2nd MEMORY STREAM
+        9. domcreate_stream_done
+            9.a. Calls -incoming to start QEMU process
+        10. domcreate_devmodel_started
+        */
+
+        dcs->sdss.dm.callback = start_nbd_server;
+        dcs->sdss.callback = start_nbd_server;
+    }
+
 
     if (restore_fd < 0 && dcs->domid_soft_reset == INVALID_DOMID) {
         rc = libxl__domain_build(gc, d_config, domid, state);
@@ -1061,6 +1165,7 @@ static void domcreate_bootloader_done(libxl__egc *egc,
 
     /* Restore */
     callbacks->restore_results = libxl__srm_callout_callback_restore_results;
+    callbacks_mirror_qemu_disks->restore_results = libxl__srm_callout_callback_restore_results;
 
     /* COLO only supports HVM now because it does not work very
      * well with pv drivers:
@@ -1087,6 +1192,7 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     dcs->srs.legacy = (dcs->restore_params.stream_version == 1);
     dcs->srs.back_channel = false;
     dcs->srs.completion_callback = domcreate_stream_done;
+    dcs->srs.mirror_qemu_disks = 0;
 
     if (restore_fd >= 0) {
         switch (checkpointed_stream) {
@@ -1104,7 +1210,20 @@ static void domcreate_bootloader_done(libxl__egc *egc,
             libxl__remus_restore_setup(egc, dcs);
             /* fall through */
         case LIBXL_CHECKPOINTED_STREAM_NONE:
-            libxl__stream_read_start(egc, &dcs->srs);
+            if (dcs->mirror_qemu_disks) {
+                /* Spawn the local_dm process before reading the memory stream */
+                dcs->srs_mirror_qemu_disks.ao = ao;
+                dcs->srs_mirror_qemu_disks.dcs = dcs;
+                dcs->srs_mirror_qemu_disks.fd = restore_fd;
+                dcs->srs_mirror_qemu_disks.legacy = (dcs->restore_params.stream_version == 1);
+                dcs->srs_mirror_qemu_disks.back_channel = false;
+                dcs->srs_mirror_qemu_disks.completion_callback = domcreate_stream_done;
+                dcs->srs_mirror_qemu_disks.mirror_qemu_disks = 1;
+
+                libxl__stream_read_start(egc, &dcs->srs_mirror_qemu_disks);
+            } else {
+                libxl__stream_read_start(egc, &dcs->srs);
+            }
         }
         return;
     }
@@ -1131,6 +1250,35 @@ static void domcreate_stream_done(libxl__egc *egc,
                                   int ret)
 {
     libxl__domain_create_state *dcs = srs->dcs;
+    STATE_AO_GC(dcs->ao);
+
+    const uint32_t domid = dcs->guest_domid;
+    const char* uri;
+    const char* state_file = GCSPRINTF(
+                             LIBXL_DEVICE_MODEL_RESTORE_FILE".%d", domid);
+
+    if(!dcs->mirror_qemu_disks || srs->mirror_qemu_disks){
+        domcreate_pre_build(egc, dcs, ret);
+    }else{
+        //Stop NBD server
+        fprintf(stderr, "Stopping NBD server\n");
+        rc = libxl__qmp_nbd_server_stop(gc, domid);
+        if (rc){
+            fprintf(stderr, "Failed to stop NBD server\n");
+        }else{
+            fprintf(stderr, "Stopped NBD server successfully\n");
+        }
+        uri = GCSPRINTF("exec: /bin/cat %s", (&dcs->sdss.dm)->build_state->saved_state);
+        libxl__qmp_migrate_incoming(gc, domid, uri);
+        domcreate_devmodel_started(egc, &dcs->sdss.dm, 0);
+    }
+    return;
+}
+
+static void domcreate_pre_build(libxl__egc *egc,
+                                libxl__domain_create_state *dcs,
+                                int ret)
+{
     STATE_AO_GC(dcs->ao);
     libxl_ctx *ctx = libxl__gc_owner(gc);
     char **vments = NULL, **localents = NULL;
@@ -1185,7 +1333,7 @@ static void domcreate_stream_done(libxl__egc *egc,
     if (ret)
         goto out;
 
-    if (info->type == LIBXL_DOMAIN_TYPE_HVM) {
+    if (info->type == LIBXL_DOMAIN_TYPE_HVM && !dcs->mirror_qemu_disks) {
         state->saved_state = GCSPRINTF(
                        LIBXL_DEVICE_MODEL_RESTORE_FILE".%d", domid);
     }
@@ -1223,16 +1371,31 @@ static void domcreate_rebuild_done(libxl__egc *egc,
 
     store_libxl_entry(gc, domid, &d_config->b_info);
 
-    libxl__multidev_begin(ao, &dcs->multidev);
-    dcs->multidev.callback = domcreate_launch_dm;
-    libxl__add_disks(egc, ao, domid, d_config, &dcs->multidev);
-    libxl__multidev_prepared(egc, &dcs->multidev, 0);
+    domcreate_multidev_begin(egc, dcs);
 
     return;
 
  error_out:
     assert(ret);
     domcreate_complete(egc, dcs, ret);
+}
+
+static void domcreate_multidev_begin(libxl__egc *egc,
+                                   libxl__domain_create_state *dcs){
+
+    STATE_AO_GC(dcs->ao);
+
+    /* convenience aliases */
+    const uint32_t domid = dcs->guest_domid;
+    libxl_domain_config *const d_config = dcs->guest_config;
+
+    libxl__multidev_begin(ao, &dcs->multidev);
+    dcs->multidev.callback = domcreate_launch_dm;
+
+    libxl__add_disks(egc, ao, domid, d_config, &dcs->multidev);
+    libxl__multidev_prepared(egc, &dcs->multidev, 0);
+
+    return;
 }
 
 static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
@@ -1355,7 +1518,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         if (libxl_defbool_val(d_config->b_info.device_model_stubdomain))
             libxl__spawn_stub_dm(egc, &dcs->sdss);
         else
-            libxl__spawn_local_dm(egc, &dcs->sdss.dm);
+            libxl__spawn_local_dm(egc, &dcs->sdss.dm, dcs->mirror_qemu_disks);
 
         /*
          * Handle the domain's (and the related stubdomain's) access to
@@ -1387,7 +1550,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
             goto error_out;
         if (ret) {
             dcs->sdss.dm.guest_domid = domid;
-            libxl__spawn_local_dm(egc, &dcs->sdss.dm);
+            libxl__spawn_local_dm(egc, &dcs->sdss.dm, 0);
             return;
         } else {
             assert(!dcs->sdss.dm.guest_domid);
@@ -1604,6 +1767,7 @@ static void domain_create_cb(libxl__egc *egc,
 
 static int do_domain_create(libxl_ctx *ctx, libxl_domain_config *d_config,
                             uint32_t *domid, int restore_fd, int send_back_fd,
+                            int mirror_qemu_disks,
                             const libxl_domain_restore_params *params,
                             const libxl_asyncop_how *ao_how,
                             const libxl_asyncprogress_how *aop_console_how)
@@ -1619,6 +1783,7 @@ static int do_domain_create(libxl_ctx *ctx, libxl_domain_config *d_config,
     libxl_domain_config_copy(ctx, &cdcs->dcs.guest_config_saved, d_config);
     cdcs->dcs.restore_fd = cdcs->dcs.libxc_fd = restore_fd;
     cdcs->dcs.send_back_fd = send_back_fd;
+    cdcs->dcs.mirror_qemu_disks = mirror_qemu_disks;
     if (restore_fd > -1) {
         cdcs->dcs.restore_params = *params;
         rc = libxl__fd_flags_modify_save(gc, cdcs->dcs.restore_fd,
@@ -1847,13 +2012,13 @@ int libxl_domain_create_new(libxl_ctx *ctx, libxl_domain_config *d_config,
                             const libxl_asyncprogress_how *aop_console_how)
 {
     unset_disk_colo_restore(d_config);
-    return do_domain_create(ctx, d_config, domid, -1, -1, NULL,
+    return do_domain_create(ctx, d_config, domid, -1, -1, 0, NULL,
                             ao_how, aop_console_how);
 }
 
 int libxl_domain_create_restore(libxl_ctx *ctx, libxl_domain_config *d_config,
                                 uint32_t *domid, int restore_fd,
-                                int send_back_fd,
+                                int send_back_fd, int mirror_qemu_disks,
                                 const libxl_domain_restore_params *params,
                                 const libxl_asyncop_how *ao_how,
                                 const libxl_asyncprogress_how *aop_console_how)
@@ -1865,7 +2030,7 @@ int libxl_domain_create_restore(libxl_ctx *ctx, libxl_domain_config *d_config,
     }
 
     return do_domain_create(ctx, d_config, domid, restore_fd, send_back_fd,
-                            params, ao_how, aop_console_how);
+                            mirror_qemu_disks, params, ao_how, aop_console_how);
 }
 
 int libxl_domain_soft_reset(libxl_ctx *ctx,
