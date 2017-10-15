@@ -411,8 +411,19 @@ void libxl__domain_save(libxl__egc *egc, libxl__domain_save_state *dss)
     dss->sws.fd  = dss->fd;
     dss->sws.back_channel = false;
     dss->sws.completion_callback = stream_done;
+    dss->sws.mirror_qemu_disks = 0;
 
-    libxl__stream_write_start(egc, &dss->sws);
+    if(!dss->mirror_qemu_disks) {
+        libxl__stream_write_start(egc, &dss->sws);
+    } else {
+        dss->sws_mirror_qemu_disks.ao  = dss->ao;
+        dss->sws_mirror_qemu_disks.dss = dss;
+        dss->sws_mirror_qemu_disks.fd  = dss->fd;
+        dss->sws_mirror_qemu_disks.back_channel = false;
+        dss->sws_mirror_qemu_disks.mirror_qemu_disks = 1;
+        dss->sws_mirror_qemu_disks.completion_callback = stream_done;
+        libxl__stream_write_start(egc, &dss->sws_mirror_qemu_disks);
+    }
     return;
 
  out:
@@ -467,7 +478,11 @@ static void mirror_qemu_disks(libxl__egc *egc, libxl__stream_write_state *sws,
 static void stream_done(libxl__egc *egc,
                         libxl__stream_write_state *sws, int rc)
 {
-    domain_save_done(egc, sws->dss, rc);
+    if(!sws->dss->mirror_qemu_disks || !sws->mirror_qemu_disks) {
+        domain_save_done(egc, sws->dss, rc);
+    } else {
+        mirror_qemu_disks(egc, sws, rc);
+    }
 }
 
 static void domain_save_done(libxl__egc *egc,
