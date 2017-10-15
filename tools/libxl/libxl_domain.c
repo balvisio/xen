@@ -509,6 +509,8 @@ int libxl_domain_suspend(libxl_ctx *ctx, uint32_t domid, int fd, int flags,
     dss->type = type;
     dss->live = flags & LIBXL_SUSPEND_LIVE;
     dss->debug = flags & LIBXL_SUSPEND_DEBUG;
+    dss->mirror_qemu_disks = (flags & LIBXL_SUSPEND_MIRROR_QEMU_DISKS) ? 1 : 0;
+    dss->hostname = hostname;
     dss->checkpointed_stream = LIBXL_CHECKPOINTED_STREAM_NONE;
 
     rc = libxl__fd_flags_modify_save(gc, dss->fd,
