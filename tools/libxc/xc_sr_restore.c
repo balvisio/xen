@@ -799,11 +799,13 @@ static int restore(struct xc_sr_context *ctx)
      * With Remus, if we reach here, there must be some error on primary,
      * failover from the last checkpoint state.
      */
-    rc = ctx->restore.ops.stream_complete(ctx);
-    if ( rc )
-        goto err;
+    if ( !ctx->migration_phase != MIGRATION_PHASE_MIRROR_DISK ) {
+        rc = ctx->restore.ops.stream_complete(ctx);
+        if ( rc )
+            goto err;
 
-    IPRINTF("Restore successful");
+        IPRINTF("Restore successful");
+    }
     goto done;
 
  err:
@@ -829,13 +831,15 @@ int xc_domain_restore(xc_interface *xch, int io_fd, uint32_t dom,
                       unsigned long *console_gfn, domid_t console_domid,
                       unsigned int hvm, unsigned int pae,
                       xc_migration_stream_t stream_type,
-                      struct restore_callbacks *callbacks, int send_back_fd)
+                      struct restore_callbacks *callbacks, int send_back_fd,
+                      int migration_phase)
 {
     xen_pfn_t nr_pfns;
     struct xc_sr_context ctx =
         {
             .xch = xch,
             .fd = io_fd,
+            .migration_phase = migration_phase
         };
 
     /* GCC 4.4 (of CentOS 6.x vintage) can' t initialise anonymous unions. */
