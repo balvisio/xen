@@ -1396,7 +1396,7 @@ static int libxl__build_device_model_args_new(libxl__gc *gc,
         }
     }
 
-    if (state->saved_state && !mirror_qemu_disks) {
+    if (state->saved_state) {
         /* This file descriptor is meant to be used by QEMU */
         *dm_state_fd = open(state->saved_state, O_RDONLY);
         flexarray_append(dm_args, "-incoming");
@@ -2062,7 +2062,7 @@ static void spawn_stub_launch_dm(libxl__egc *egc,
         /* If dom0 qemu not needed, do not launch it */
         spawn_stubdom_pvqemu_cb(egc, &sdss->pvqemu, 0);
     } else {
-        libxl__spawn_local_dm(egc, &sdss->pvqemu, 0);
+        libxl__spawn_local_dm(egc, &sdss->pvqemu);
     }
 
     return;
@@ -2167,8 +2167,7 @@ static void device_model_spawn_outcome(libxl__egc *egc,
                                        libxl__dm_spawn_state *dmss,
                                        int rc);
 
-void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss,
-                           int mirror_qemu_disks)
+void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
 {
     /* convenience aliases */
     const int domid = dmss->guest_domid;
@@ -2208,7 +2207,8 @@ void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss,
     }
     rc = libxl__build_device_model_args(gc, dm, domid, guest_config,
                                           &args, &envs, state,
-                                          &dm_state_fd, mirror_qemu_disks);
+                                          &dm_state_fd,
+                                          dmss->mirror_qemu_disks);
     if (rc)
         goto out;
 
