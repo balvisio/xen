@@ -335,7 +335,7 @@ static void stream_header_done(libxl__egc *egc,
 static void libxc_header_done(libxl__egc *egc,
                               libxl__stream_write_state *stream)
 {
-    int save_mirror_qemu_disks = stream->dss->local_disks;
+    int save_mirror_qemu_disks = stream->dss->mirror_qemu_disks;
     libxl__xc_domain_save(egc, stream->dss, &stream->shs,
                           save_mirror_qemu_disks + stream->mirror_qemu_disks);
 }

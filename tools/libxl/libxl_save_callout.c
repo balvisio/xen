@@ -62,7 +62,8 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
         state->store_domid, state->console_port,
         state->console_domid,
         hvm, pae,
-        cbflags, dcs->restore_params.checkpointed_stream
+        cbflags, dcs->restore_params.checkpointed_stream,
+        migration_phase,
     };
 
     shs->ao = ao;
@@ -74,7 +75,7 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
     } else {
         if ( migration_phase != LIBXL_MIGRATION_PHASE_MIRROR_DISK ) {
             shs->completion_callback = libxl__xc_domain_restore_done;
-            if( local_disks == LIBXL_MIGRATION_PHASE_VIRTUAL_RAM )
+            if( migration_phase == LIBXL_MIGRATION_PHASE_VIRTUAL_RAM )
                 shs->need_results = 0;
             else
                 shs->need_results = 1;
