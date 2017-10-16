@@ -446,7 +446,7 @@ static void mirror_qemu_disks(libxl__egc *egc, libxl__stream_write_state *sws,
 start_mirror:
         LOGD(DEBUG, domid, "Sleeping for a bit so that source can start NBD\n");
         sleep(30);
-        LOGD(DEBUG, "Starting mirror-drive of device %s\n",
+        LOGD(DEBUG, domid, "Starting mirror-drive of device %s\n",
              QEMU_DRIVE_MIRROR_DEVICE);
         target = GCSPRINTF("nbd:%s:%s:exportname=%s", dss->hostname,
                            QEMU_DRIVE_MIRROR_PORT, QEMU_DRIVE_MIRROR_DEVICE);

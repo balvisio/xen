@@ -1055,24 +1055,24 @@ static void start_nbd_server(libxl__egc *egc, libxl__dm_spawn_state *dmss,
               * TODO: Assign port dynamically
               */
 
-            LOGD(DEBUG, "Starting NBD Server\n");
+            LOGD(DEBUG, domid, "Starting NBD Server\n");
             ret = libxl__qmp_nbd_server_start(gc, domid, "::", QEMU_DRIVE_MIRROR_PORT);
             if (ret) {
                 ret = ERROR_FAIL;
-                LOGD(ERROR, "Failed to start NBD Server\n");
+                LOGD(ERROR, domid, "Failed to start NBD Server\n");
                 goto skip_nbd;
             }else{
-                LOGD(INFO, "Started NBD Server Successfully\n");
+                LOGD(INFO, domid, "Started NBD Server Successfully\n");
             }
 
             ret = libxl__qmp_nbd_server_add(gc, domid, QEMU_DRIVE_MIRROR_DEVICE);
 
             if (ret) {
                 ret = ERROR_FAIL;
-                LOGD(ERROR, "Failed to add NBD Server\n");
+                LOGD(ERROR, domid, "Failed to add NBD Server\n");
                 goto skip_nbd;
             } else {
-                LOGD(INFO, "NBD Add Successful\n");
+                LOGD(INFO, domid, "NBD Add Successful\n");
             }
         }
 
@@ -1103,7 +1103,7 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     libxl__srm_restore_autogen_callbacks *const callbacks =
         &dcs->srs.shs.callbacks.restore.a;
     libxl__srm_restore_autogen_callbacks *const callbacks_mirror_qemu_disks =
-        &dcs->srs_local_disks.shs.callbacks.restore.a;
+        &dcs->srs_mirror_qemu_disks.shs.callbacks.restore.a;
 
     if (rc) {
         domcreate_rebuild_done(egc, dcs, rc);
@@ -1252,6 +1252,7 @@ static void domcreate_stream_done(libxl__egc *egc,
 {
     libxl__domain_create_state *dcs = srs->dcs;
     STATE_AO_GC(dcs->ao);
+    int rc;
 
     const uint32_t domid = dcs->guest_domid;
     const char* uri;
@@ -1269,7 +1270,7 @@ static void domcreate_stream_done(libxl__egc *egc,
         }else{
             fprintf(stderr, "Stopped NBD server successfully\n");
         }
-        uri = GCSPRINTF("exec: /bin/cat %s", (&dcs->sdss.dm)->build_state->saved_state);
+        uri = GCSPRINTF("exec: /bin/cat %s", state_file);
         libxl__qmp_migrate_incoming(gc, domid, uri);
         domcreate_devmodel_started(egc, &dcs->sdss.dm, 0);
     }
