@@ -8,6 +8,10 @@
 
 #include <inttypes.h>
 
+#define MIGRATION_PHASE_NON_LOCAL_DISK 0
+#define MIGRATION_PHASE_VIRTUAL_RAM 1
+#define MIGRATION_PHASE_MIRROR_DISK 2
+
 /*
  * Image Header
  */
