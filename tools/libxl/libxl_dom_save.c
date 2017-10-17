@@ -435,63 +435,44 @@ static void mirror_qemu_disks(libxl__egc *egc, libxl__stream_write_state *sws,
 {
     int counter = 20;
     char* target;
-    bool job_is_ready = false;
     libxl__domain_save_state *dss = sws->dss;
     const uint32_t domid = dss->domid;
     STATE_AO_GC(dss->ao);
 
-    if (dss->mirror_qemu_disks) {
+    if (rc)
+        goto err;
     /*
      * If the -q was provided, the drive-mirror job is started.
-     * TODO: Move the following code as part of the domain_suspend
      * TODO: The port should be sent by the destination.
-    */
-start_mirror:
-        LOGD(DEBUG, domid, "Sleeping for a bit so that source can start NBD\n");
-        sleep(30);
-        LOGD(DEBUG, domid, "Starting mirror-drive of device %s\n",
-             QEMU_DRIVE_MIRROR_DEVICE);
-        target = GCSPRINTF("nbd:%s:%s:exportname=%s", dss->hostname,
-                           QEMU_DRIVE_MIRROR_PORT, QEMU_DRIVE_MIRROR_DEVICE);
-        rc = libxl__qmp_drive_mirror(gc, dss->domid, QEMU_DRIVE_MIRROR_DEVICE,
+     */
+ start_mirror:
+    LOGD(DEBUG, domid, "Sleeping for a bit so that source can start NBD\n");
+    sleep(30);
+    LOGD(DEBUG, domid, "Starting mirror-drive of device %s\n",
+         QEMU_DRIVE_MIRROR_DEVICE);
+    target = GCSPRINTF("nbd:%s:%s:exportname=%s", dss->hostname,
+                       QEMU_DRIVE_MIRROR_PORT, QEMU_DRIVE_MIRROR_DEVICE);
+    rc = libxl__qmp_drive_mirror(gc, dss->domid, QEMU_DRIVE_MIRROR_DEVICE,
                                      target, "raw");
-        if (!rc) {
-            LOGD(INFO, domid, "Drive mirror command returned successfully\n");
+    if (!rc) {
+        LOGD(DEBUG, domid, "Drive mirror command returned successfully\n");
+    }else{
+        LOGD(ERROR, domid, "Sending drive mirror command failed\n");
+        if(counter > 0){
+            LOGD(INFO, domid, "Counter: %d. Sleeping for 10 sec and retry\n", counter);
+            sleep(10);
+            counter--;
+            goto start_mirror;
         }else{
-            LOGD(ERROR, domid, "Sending drive mirror command failed\n");
-            if(counter > 0){
-                LOGD(INFO, domid, "Counter: %d. Sleeping for 10 sec and retry\n", counter);
-                sleep(10);
-                counter--;
-                goto start_mirror;
-            }else{
-                goto cont;
-            }
-        }
-
-        /*
-         * Query job status until it is ready
-         * TODO: This code is just an inefficient busy wait. QMP sends an
-         * TODO: asynchronous message when mirroring job is completed. Consider
-         * TODO: adding the capability to handle asynchronous QMP messages (already done?)
-         */
-        while(!job_is_ready) {
-            LOGD(INFO, domid, "Checking for drive-mirror job");
-            rc = libxl__qmp_query_block_jobs(gc, dss->domid, &job_is_ready);
-            if(rc){
-                LOGD(ERROR, domid, "Checking block job failed\n");
-                goto cont;
-            }else{
-                LOGD(INFO, domid, "Checking block job succeeded\n");
-            }
-            if(!job_is_ready){
-                LOGD(INFO, domid, "Sleeping 5 sec\n");
-                sleep(5);
-            }
+            goto err;
         }
     }
-cont:
+
     libxl__stream_write_start(egc, &sws->dss->sws);
+    return;
+
+ err:
+   dss->callback(egc, dss, rc);
 }
 
 static void stream_done(libxl__egc *egc,
