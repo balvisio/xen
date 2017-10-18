@@ -157,8 +157,7 @@ static int x86_hvm_setup(struct xc_sr_context *ctx)
 
     ctx->save.p2m_size = nr_pfns;
 
-    if ( ctx->migration_phase != MIGRATION_PHASE_MIRROR_DISK &&
-         ctx->save.callbacks->switch_qemu_logdirty(
+    if ( ctx->save.callbacks->switch_qemu_logdirty(
              ctx->domid, 1, ctx->save.callbacks->data) )
     {
         PERROR("Couldn't enable qemu log-dirty mode");
@@ -215,8 +214,7 @@ static int x86_hvm_cleanup(struct xc_sr_context *ctx)
     xc_interface *xch = ctx->xch;
 
     /* If qemu successfully enabled logdirty mode, attempt to disable. */
-    if ( ctx->migration_phase != MIGRATION_PHASE_MIRROR_DISK &&
-         ctx->x86_hvm.save.qemu_enabled_logdirty &&
+    if ( ctx->x86_hvm.save.qemu_enabled_logdirty &&
          ctx->save.callbacks->switch_qemu_logdirty(
              ctx->domid, 0, ctx->save.callbacks->data) )
     {
@@ -237,7 +235,6 @@ struct xc_sr_save_ops save_ops_x86_hvm =
     .end_of_checkpoint   = x86_hvm_end_of_checkpoint,
     .check_vm_state      = x86_hvm_check_vm_state,
     .cleanup             = x86_hvm_cleanup,
-    .local_disks         = x86_hvm_end_of_checkpoint,
 };
 
 /*

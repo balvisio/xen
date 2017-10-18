@@ -96,8 +96,6 @@ struct xc_sr_save_ops
      * after a successful save, or upon encountering an error.
      */
     int (*cleanup)(struct xc_sr_context *ctx);
-
-    int (*local_disks)(struct xc_sr_context *ctx);
 };
 
 
@@ -179,7 +177,6 @@ struct xc_sr_context
     xc_interface *xch;
     uint32_t domid;
     int fd;
-    int migration_phase;
 
     xc_dominfo_t dominfo;
 
