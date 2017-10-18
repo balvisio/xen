@@ -240,12 +240,6 @@ libxl_checkpointed_stream = Enumeration("checkpointed_stream", [
     (2, "COLO"),
     ])
 
-libxl_stream_phase = Enumeration("migration_phase", [
-    (0, "NON_LOCAL_DISK"),
-    (1, "VIRTUAL_RAM"),
-    (2, "MIRROR_DISK"),
-    ])
-
 #
 # Complex libxl types
 #

@@ -1121,7 +1121,6 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     dcs->sdss.dm.spawn.ao = ao;
     dcs->sdss.dm.guest_config = dcs->guest_config;
     dcs->sdss.dm.build_state = &dcs->build_state;
-    dcs->sdss.dm.mirror_qemu_disks = dcs->mirror_qemu_disks;
     if(!dcs->mirror_qemu_disks) {
         dcs->sdss.dm.callback = domcreate_devmodel_started;
         dcs->sdss.callback = domcreate_devmodel_started;
@@ -1519,7 +1518,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
         if (libxl_defbool_val(d_config->b_info.device_model_stubdomain))
             libxl__spawn_stub_dm(egc, &dcs->sdss);
         else
-            libxl__spawn_local_dm(egc, &dcs->sdss.dm);
+            libxl__spawn_local_dm(egc, &dcs->sdss.dm, dcs->mirror_qemu_disks);
 
         /*
          * Handle the domain's (and the related stubdomain's) access to
@@ -1551,7 +1550,7 @@ static void domcreate_launch_dm(libxl__egc *egc, libxl__multidev *multidev,
             goto error_out;
         if (ret) {
             dcs->sdss.dm.guest_domid = domid;
-            libxl__spawn_local_dm(egc, &dcs->sdss.dm);
+            libxl__spawn_local_dm(egc, &dcs->sdss.dm, 0);
             return;
         } else {
             assert(!dcs->sdss.dm.guest_domid);
