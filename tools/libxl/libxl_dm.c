@@ -915,7 +915,7 @@ static int libxl__build_device_model_args_new(libxl__gc *gc,
                                         const libxl_domain_config *guest_config,
                                         char ***args, char ***envs,
                                         const libxl__domain_build_state *state,
-                                        int *dm_state_fd, int mirror_qemu_disks)
+                                        int *dm_state_fd)
 {
     const libxl_domain_create_info *c_info = &guest_config->c_info;
     const libxl_domain_build_info *b_info = &guest_config->b_info;
@@ -1396,18 +1396,12 @@ static int libxl__build_device_model_args_new(libxl__gc *gc,
         }
     }
 
-    if (state->saved_state && !mirror_qemu_disks) {
+    if (state->saved_state) {
         /* This file descriptor is meant to be used by QEMU */
         *dm_state_fd = open(state->saved_state, O_RDONLY);
         flexarray_append(dm_args, "-incoming");
         flexarray_append(dm_args, GCSPRINTF("fd:%d",*dm_state_fd));
     }
-
-    if(mirror_qemu_disks) {
-        flexarray_append(dm_args, "-incoming");
-        flexarray_append(dm_args, "defer");
-    }
-
     for (i = 0; b_info->extra && b_info->extra[i] != NULL; i++)
         flexarray_append(dm_args, b_info->extra[i]);
 
@@ -1670,7 +1664,7 @@ static int libxl__build_device_model_args(libxl__gc *gc,
                                         const libxl_domain_config *guest_config,
                                         char ***args, char ***envs,
                                         const libxl__domain_build_state *state,
-                                        int *dm_state_fd, int mirror_qemu_disks)
+                                        int *dm_state_fd)
 /* dm_state_fd may be NULL iff caller knows we are using old stubdom
  * and therefore will be passing a filename rather than a fd. */
 {
@@ -1686,8 +1680,7 @@ static int libxl__build_device_model_args(libxl__gc *gc,
         return libxl__build_device_model_args_new(gc, dm,
                                                   guest_domid, guest_config,
                                                   args, envs,
-                                                  state, dm_state_fd,
-                                                  mirror_qemu_disks);
+                                                  state, dm_state_fd);
     default:
         LOGED(ERROR, guest_domid, "unknown device model version %d",
               guest_config->b_info.device_model_version);
@@ -1904,7 +1897,7 @@ void libxl__spawn_stub_dm(libxl__egc *egc, libxl__stub_dm_spawn_state *sdss)
 
     ret = libxl__build_device_model_args(gc, "stubdom-dm", guest_domid,
                                          guest_config, &args, NULL,
-                                         d_state, NULL, 0);
+                                         d_state, NULL);
     if (ret) {
         ret = ERROR_FAIL;
         goto out;
@@ -2062,7 +2055,7 @@ static void spawn_stub_launch_dm(libxl__egc *egc,
         /* If dom0 qemu not needed, do not launch it */
         spawn_stubdom_pvqemu_cb(egc, &sdss->pvqemu, 0);
     } else {
-        libxl__spawn_local_dm(egc, &sdss->pvqemu, 0);
+        libxl__spawn_local_dm(egc, &sdss->pvqemu);
     }
 
     return;
@@ -2167,8 +2160,7 @@ static void device_model_spawn_outcome(libxl__egc *egc,
                                        libxl__dm_spawn_state *dmss,
                                        int rc);
 
-void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss,
-                           int mirror_qemu_disks)
+void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss)
 {
     /* convenience aliases */
     const int domid = dmss->guest_domid;
@@ -2208,7 +2200,7 @@ void libxl__spawn_local_dm(libxl__egc *egc, libxl__dm_spawn_state *dmss,
     }
     rc = libxl__build_device_model_args(gc, dm, domid, guest_config,
                                           &args, &envs, state,
-                                          &dm_state_fd, mirror_qemu_disks);
+                                          &dm_state_fd);
     if (rc)
         goto out;
 
@@ -2338,7 +2330,7 @@ static void device_model_confirm(libxl__egc *egc, libxl__spawn_state *spawn,
     if (!xsdata)
         return;
 
-    if (strcmp(xsdata, "running") && strcmp(xsdata, "inmigrate"))
+    if (strcmp(xsdata, "running"))
         return;
 
     libxl__spawn_initiate_detach(gc, spawn);

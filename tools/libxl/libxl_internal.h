@@ -1840,42 +1840,19 @@ _hidden int libxl__qmp_start_replication(libxl__gc *gc, int domid,
 _hidden int libxl__qmp_nbd_server_add(libxl__gc *gc, int domid,
                                        const char *disk);
 
-/* Add a disk to NBD server */
-_hidden int libxl__qmp_nbd_server_add(libxl__gc *gc, int domid,
-                                      const char *disk);
-/* Start replication */
-_hidden int libxl__qmp_start_replication(libxl__gc *gc, int domid,
-                                         bool primary);
-/* Add a disk to NBD server */
- _hidden int libxl__qmp_nbd_server_add(libxl__gc *gc, int domid,
-                                       const char *disk);
 /* Mirror disk drive */
-_hidden int libxl__qmp_drive_mirror(libxl__gc *gc, int domid,
-                                    const char* device, const char* target,
-                                    const char* format);
+_hidden int libxl__qmp_drive_mirror(libxl__gc *gc, int domid, const char* device,
+                                    const char* target, const char* format);
+
 /* Query block devices */
-_hidden int libxl__qmp_query_block(libxl__gc *gc, int domid,
-                                   char *device_names);
-/* Query existing block jobs*/
-_hidden int libxl__qmp_query_block_jobs(libxl__gc *gc, int domid,
-                                        bool *is_ready);
-/* Resume QEMU process started with -incoming defer */
-_hidden int libxl__qmp_migrate_incoming(libxl__gc *gc, int domid,
-                                        const char* uri);
-/* Mirror disk drive */
-_hidden int libxl__qmp_drive_mirror(libxl__gc *gc, int domid,
-                                    const char* device, const char* target,
-                                    const char* format);
-/* Query block devices */
-_hidden int libxl__qmp_query_block(libxl__gc *gc, int domid,
-                                   char *device_names);
+_hidden int libxl__qmp_query_block(libxl__gc *gc, int domid, char *device_names);
 
 /* Query existing block jobs*/
-_hidden int libxl__qmp_query_block_jobs(libxl__gc *gc, int domid,
-                                        bool *is_ready);
+_hidden int libxl__qmp_query_block_jobs(libxl__gc *gc, int domid, bool *is_ready);
+
 /* Resume QEMU process started with -incoming defer */
-_hidden int libxl__qmp_migrate_incoming(libxl__gc *gc, int domid,
-                                        const char* uri);
+_hidden int libxl__qmp_migrate_incoming(libxl__gc *gc, int domid, const char* uri);
+
 /* Get replication error that occurs when the vm is running */
 _hidden int libxl__qmp_query_xen_replication_status(libxl__gc *gc, int domid);
 /* Do checkpoint */
@@ -3165,7 +3142,6 @@ struct libxl__stream_read_state {
     int fd;
     bool legacy;
     bool back_channel;
-    int mirror_qemu_disks;
     void (*completion_callback)(libxl__egc *egc,
                                 libxl__stream_read_state *srs,
                                 int rc);
@@ -3244,7 +3220,6 @@ struct libxl__stream_write_state {
     libxl__domain_save_state *dss;
     int fd;
     bool back_channel;
-    int mirror_qemu_disks;
     void (*completion_callback)(libxl__egc *egc,
                                 libxl__stream_write_state *sws,
                                 int rc);
@@ -3344,8 +3319,6 @@ struct libxl__domain_save_state {
     libxl_domain_type type;
     int live;
     int debug;
-    int mirror_qemu_disks;
-    const char* hostname;
     int checkpointed_stream;
     const libxl_domain_remus_info *remus;
     /* private */
@@ -3361,7 +3334,6 @@ struct libxl__domain_save_state {
     };
     libxl__checkpoint_devices_state cds;
     libxl__stream_write_state sws;
-    libxl__stream_write_state sws_mirror_qemu_disks;
     libxl__logdirty_switch logdirty;
 };
 
@@ -3696,7 +3668,6 @@ struct libxl__dm_spawn_state {
     libxl__spawn_state spawn;
     /* filled in by user, must remain valid: */
     uint32_t guest_domid; /* domain being served */
-    int mirror_qemu_disks;
     libxl_domain_config *guest_config;
     libxl__domain_build_state *build_state; /* relates to guest_domid */
     libxl__dm_spawn_cb *callback;
@@ -3742,7 +3713,6 @@ struct libxl__domain_create_state {
     int restore_fd, libxc_fd;
     int restore_fdfl; /* original flags of restore_fd */
     int send_back_fd;
-    int mirror_qemu_disks;
     libxl_domain_restore_params restore_params;
     uint32_t domid_soft_reset;
     libxl__domain_create_cb *callback;
@@ -3759,7 +3729,6 @@ struct libxl__domain_create_state {
         /* If we're not doing stubdom, we use only dmss.dm,
          * for the non-stubdom device model. */
     libxl__stream_read_state srs;
-    libxl__stream_read_state srs_local_disks;
     /* necessary if the domain creation failed and we have to destroy it */
     libxl__domain_destroy_state dds;
     libxl__multidev multidev;
@@ -3779,16 +3748,12 @@ _hidden void libxl__domain_save(libxl__egc *egc,
 /* calls libxl__xc_domain_suspend_done when done */
 _hidden void libxl__xc_domain_save(libxl__egc *egc,
                                    libxl__domain_save_state *dss,
-                                   libxl__save_helper_state *shs,
-                                   int mirror_qemu_disks);
+                                   libxl__save_helper_state *shs);
 /* If rc==0 then retval is the return value from xc_domain_save
  * and errnoval is the errno value it provided.
  * If rc!=0, retval and errnoval are undefined. */
 _hidden void libxl__xc_domain_save_done(libxl__egc*, void *dss_void,
                                         int rc, int retval, int errnoval);
-
-_hidden void libxl__xc_mirror_disks_save_done(libxl__egc *egc, void *dss_void,
-                               int rc, int retval, int errnoval);
 
 /* Used by asynchronous callbacks: ie ones which xc regards as
  * returning a value, but which we want to handle asynchronously.
@@ -3813,17 +3778,12 @@ _hidden int libxl__restore_emulator_xenstore_data
 _hidden void libxl__xc_domain_restore(libxl__egc *egc,
                                       libxl__domain_create_state *dcs,
                                       libxl__save_helper_state *shs,
-                                      int hvm, int pae, int mirror_qemu_disks);
+                                      int hvm, int pae);
 /* If rc==0 then retval is the return value from xc_domain_save
  * and errnoval is the errno value it provided.
  * If rc!=0, retval and errnoval are undefined. */
 _hidden void libxl__xc_domain_restore_done(libxl__egc *egc, void *dcs_void,
                                            int rc, int retval, int errnoval);
-
-_hidden void libxl__xc_mirror_disks_restore_done(libxl__egc *egc,
-                                                 void *dcs_void,
-                                                 int rc, int retval,
-                                                 int errnoval);
 
 _hidden void libxl__save_helper_init(libxl__save_helper_state *shs);
 _hidden void libxl__save_helper_abort(libxl__egc *egc,

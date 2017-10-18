@@ -43,7 +43,7 @@ static void helper_done(libxl__egc *egc, libxl__save_helper_state *shs);
 
 void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
                               libxl__save_helper_state *shs,
-                              int hvm, int pae, int mirror_qemu_disks)
+                              int hvm, int pae)
 {
     STATE_AO_GC(dcs->ao);
 
@@ -63,22 +63,16 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
         state->console_domid,
         hvm, pae,
         cbflags, dcs->restore_params.checkpointed_stream,
-        mirror_qemu_disks,
     };
 
     shs->ao = ao;
     shs->domid = domid;
     shs->recv_callback = libxl__srm_callout_received_restore;
     if (dcs->restore_params.checkpointed_stream ==
-        LIBXL_CHECKPOINTED_STREAM_COLO) {
+        LIBXL_CHECKPOINTED_STREAM_COLO)
         shs->completion_callback = libxl__colo_restore_teardown;
-    } else {
-        if(!mirror_qemu_disks){
-            shs->completion_callback = libxl__xc_domain_restore_done;
-        } else {
-            shs->completion_callback = libxl__xc_hvm_params_restore_done;
-        }
-    }
+    else
+        shs->completion_callback = libxl__xc_domain_restore_done;
     shs->caller_state = dcs;
     shs->need_results = 1;
 
@@ -87,7 +81,7 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
 }
 
 void libxl__xc_domain_save(libxl__egc *egc, libxl__domain_save_state *dss,
-                           libxl__save_helper_state *shs, int mirror_qemu_disks)
+                           libxl__save_helper_state *shs)
 {
     STATE_AO_GC(dss->ao);
 
@@ -96,17 +90,13 @@ void libxl__xc_domain_save(libxl__egc *egc, libxl__domain_save_state *dss,
 
     const unsigned long argnums[] = {
         dss->domid, 0, 0, dss->xcflags, dss->hvm,
-        cbflags, dss->checkpointed_stream, mirror_qemu_disks,
+        cbflags, dss->checkpointed_stream,
     };
 
     shs->ao = ao;
     shs->domid = dss->domid;
     shs->recv_callback = libxl__srm_callout_received_save;
-    if(!mirror_qemu_disks){
-        shs->completion_callback = libxl__xc_domain_save_done;
-    }else{
-        shs->completion_callback = libxl__xc_hvm_params_save_done;
-    }
+    shs->completion_callback = libxl__xc_domain_save_done;
     shs->caller_state = dss;
     shs->need_results = 0;
 
@@ -346,13 +336,13 @@ static void helper_exited(libxl__egc *egc, libxl__ev_child *ch,
         if (!shs->rc)
             shs->rc = ERROR_FAIL;
     }
-//    balvisio: TODO: FIX
-//    if (shs->need_results) {
-//        if (!shs->rc) {
-//            LOGD(ERROR,shs->domid,"%s exited without providing results",what);
-//            shs->rc = ERROR_FAIL;
-//        }
-//    }
+
+    if (shs->need_results) {
+        if (!shs->rc) {
+            LOGD(ERROR,shs->domid,"%s exited without providing results",what);
+            shs->rc = ERROR_FAIL;
+        }
+    }
 
     if (!shs->completed) {
         if (!shs->rc) {

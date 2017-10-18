@@ -487,7 +487,7 @@ static void domain_suspend_cb(libxl__egc *egc,
 }
 
 int libxl_domain_suspend(libxl_ctx *ctx, uint32_t domid, int fd, int flags,
-                         const char* hostname, const libxl_asyncop_how *ao_how)
+                         const libxl_asyncop_how *ao_how)
 {
     AO_CREATE(ctx, domid, ao_how);
     int rc;
@@ -509,8 +509,6 @@ int libxl_domain_suspend(libxl_ctx *ctx, uint32_t domid, int fd, int flags,
     dss->type = type;
     dss->live = flags & LIBXL_SUSPEND_LIVE;
     dss->debug = flags & LIBXL_SUSPEND_DEBUG;
-    dss->mirror_qemu_disks = flags & LIBXL_SUSPEND_MIRROR_QEMU_DISKS;
-    dss->hostname = hostname;
     dss->checkpointed_stream = LIBXL_CHECKPOINTED_STREAM_NONE;
 
     rc = libxl__fd_flags_modify_save(gc, dss->fd,
