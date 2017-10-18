@@ -3759,7 +3759,7 @@ struct libxl__domain_create_state {
         /* If we're not doing stubdom, we use only dmss.dm,
          * for the non-stubdom device model. */
     libxl__stream_read_state srs;
-    libxl__stream_read_state srs_mirror_qemu_disks;
+    libxl__stream_read_state srs_local_disks;
     /* necessary if the domain creation failed and we have to destroy it */
     libxl__domain_destroy_state dds;
     libxl__multidev multidev;

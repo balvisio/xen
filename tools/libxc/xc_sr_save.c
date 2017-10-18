@@ -464,6 +464,7 @@ static int send_virtual_devices_and_params(struct xc_sr_context *ctx)
     uint64_t i = 0;
     int rc = 0;
 
+    fprintf(stderr, "BRUNO: SEND VIRTUAL DEVICES AND PARAMS\n");
     xc_set_progress_prefix(xch, "Frames");
 
     //FOR RTL AND VGA IN 128MB VM . Might change on size of VM

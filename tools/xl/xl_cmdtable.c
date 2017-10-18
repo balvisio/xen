@@ -165,8 +165,7 @@ struct cmd_spec cmd_table[] = {
       "-e              Do not wait in the background (on <host>) for the death\n"
       "                of the domain.\n"
       "--debug         Print huge (!) amount of debug during the migration process.\n"
-      "-p              Do not unpause domain after migrating it.\n"
-      "-q              Migrate local disks (Copy all the storage)"
+      "-p              Do not unpause domain after migrating it."
     },
     { "restore",
       &main_restore, 0, 1,

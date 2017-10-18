@@ -610,7 +610,7 @@ int main_migrate(int argc, char **argv)
                   daemonize ? "" : " -e",
                   debug ? " -d" : "",
                   pause_after_migration ? " -p" : "",
-                  mirror_qemu_disks ? " -q" : "");
+                  mirror_qemu_disks ? "-q" :"");
     }
 
     migrate_domain(domid, rune, debug, config_filename, mirror_qemu_disks,
