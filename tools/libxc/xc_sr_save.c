@@ -279,7 +279,7 @@ static int write_batch(struct xc_sr_context *ctx)
 /*
  * Flush a batch of pfns into the stream.
  */
-static int flush_batch(struct xc_sr_context *ctx)
+int flush_batch(struct xc_sr_context *ctx)
 {
     int rc = 0;
 
@@ -301,7 +301,7 @@ static int flush_batch(struct xc_sr_context *ctx)
 /*
  * Add a single pfn to the batch, flushing the batch if full.
  */
-static int add_to_batch(struct xc_sr_context *ctx, xen_pfn_t pfn)
+int add_to_batch(struct xc_sr_context *ctx, xen_pfn_t pfn)
 {
     int rc = 0;
 
@@ -855,6 +855,14 @@ static int save(struct xc_sr_context *ctx, uint16_t guest_type)
     if ( rc )
         goto err;
 
+    /* First pass of QEMU disk migration */
+    if ( ctx->migration_phase == MIGRATION_PHASE_MIRROR_DISK ) {
+        rc = ctx->save.ops.mirror_disks_migration_phase(ctx);
+        if ( rc )
+            goto err;
+        goto end;
+    }
+
     rc = ctx->save.ops.start_of_stream(ctx);
     if ( rc )
         goto err;
@@ -939,6 +947,7 @@ static int save(struct xc_sr_context *ctx, uint16_t guest_type)
         }
     } while ( ctx->save.checkpointed != XC_MIG_STREAM_NONE );
 
+ end:
     xc_report_progress_single(xch, "End of stream");
 
     rc = write_end_record(ctx);
@@ -974,6 +983,7 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom,
         {
             .xch = xch,
             .fd = io_fd,
+            .migration_phase = migration_phase
         };
 
     /* GCC 4.4 (of CentOS 6.x vintage) can' t initialise anonymous unions. */
@@ -989,7 +999,8 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom,
            stream_type == XC_MIG_STREAM_COLO);
 
     /* Sanity checks for callbacks. */
-    if ( hvm )
+    /* The disk mirror stream doesn't enable/disable qemu log */
+    if ( hvm && ctx.migration_phase != MIGRATION_PHASE_MIRROR_DISK )
         assert(callbacks->switch_qemu_logdirty);
     if ( ctx.save.checkpointed )
         assert(callbacks->checkpoint && callbacks->postcopy);

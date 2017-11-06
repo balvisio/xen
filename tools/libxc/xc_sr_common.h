@@ -96,6 +96,9 @@ struct xc_sr_save_ops
      * after a successful save, or upon encountering an error.
      */
     int (*cleanup)(struct xc_sr_context *ctx);
+
+
+    int (*mirror_disks_migration_phase)(struct xc_sr_context *ctx);
 };
 
 
@@ -397,6 +400,12 @@ int read_record(struct xc_sr_context *ctx, int fd, struct xc_sr_record *rec);
  */
 int populate_pfns(struct xc_sr_context *ctx, unsigned count,
                   const xen_pfn_t *original_pfns, const uint32_t *types);
+
+
+int add_to_batch(struct xc_sr_context *ctx, xen_pfn_t pfn);
+
+
+int flush_batch(struct xc_sr_context *ctx);
 
 #endif
 /*
