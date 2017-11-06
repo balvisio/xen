@@ -96,6 +96,13 @@ struct xc_sr_save_ops
      * after a successful save, or upon encountering an error.
      */
     int (*cleanup)(struct xc_sr_context *ctx);
+
+    /**
+     * Send the necessary records/params to allow the start of the local
+     * disks mirroring job in the destination node. It will be called exactly
+     * once only if the stream phase type == XC_STREAM_PHASE_PRE_MIRROR_DISKS
+     */
+    int (*pre_mirror_disks_stream_phase)(struct xc_sr_context *ctx);
 };
 
 
@@ -397,6 +404,10 @@ int read_record(struct xc_sr_context *ctx, int fd, struct xc_sr_record *rec);
  */
 int populate_pfns(struct xc_sr_context *ctx, unsigned count,
                   const xen_pfn_t *original_pfns, const uint32_t *types);
+
+int add_to_batch(struct xc_sr_context *ctx, xen_pfn_t pfn);
+
+int flush_batch(struct xc_sr_context *ctx);
 
 #endif
 /*

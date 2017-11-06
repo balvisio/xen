@@ -279,7 +279,7 @@ static int write_batch(struct xc_sr_context *ctx)
 /*
  * Flush a batch of pfns into the stream.
  */
-static int flush_batch(struct xc_sr_context *ctx)
+int flush_batch(struct xc_sr_context *ctx)
 {
     int rc = 0;
 
@@ -301,7 +301,7 @@ static int flush_batch(struct xc_sr_context *ctx)
 /*
  * Add a single pfn to the batch, flushing the batch if full.
  */
-static int add_to_batch(struct xc_sr_context *ctx, xen_pfn_t pfn)
+int add_to_batch(struct xc_sr_context *ctx, xen_pfn_t pfn)
 {
     int rc = 0;
 
@@ -842,8 +842,12 @@ static int save(struct xc_sr_context *ctx, uint16_t guest_type)
     xc_interface *xch = ctx->xch;
     int rc, saved_rc = 0, saved_errno = 0;
 
-    IPRINTF("Saving domain %d, type %s",
-            ctx->domid, dhdr_type_to_str(guest_type));
+    if ( ctx->stream_phase == XC_STREAM_PHASE_PRE_MIRROR_DISKS )
+        IPRINTF("Pre-mirroring disks save phase for domain %d, type %s",
+                ctx->domid, dhdr_type_to_str(guest_type));
+    else
+        IPRINTF("Saving domain %d, type %s",
+                ctx->domid, dhdr_type_to_str(guest_type));
 
     rc = setup(ctx);
     if ( rc )
@@ -854,6 +858,13 @@ static int save(struct xc_sr_context *ctx, uint16_t guest_type)
     rc = write_headers(ctx, guest_type);
     if ( rc )
         goto err;
+
+    if ( ctx->stream_phase == XC_STREAM_PHASE_PRE_MIRROR_DISKS ) {
+        rc = ctx->save.ops.pre_mirror_disks_stream_phase(ctx);
+        if ( rc )
+            goto err;
+        goto end;
+    }
 
     rc = ctx->save.ops.start_of_stream(ctx);
     if ( rc )
@@ -939,6 +950,7 @@ static int save(struct xc_sr_context *ctx, uint16_t guest_type)
         }
     } while ( ctx->save.checkpointed != XC_MIG_STREAM_NONE );
 
+ end:
     xc_report_progress_single(xch, "End of stream");
 
     rc = write_end_record(ctx);
@@ -974,6 +986,7 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom,
         {
             .xch = xch,
             .fd = io_fd,
+            .stream_phase = stream_phase
         };
 
     /* GCC 4.4 (of CentOS 6.x vintage) can' t initialise anonymous unions. */
@@ -989,7 +1002,8 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom,
            stream_type == XC_MIG_STREAM_COLO);
 
     /* Sanity checks for callbacks. */
-    if ( hvm )
+    /* The pre mirror disks phase stream doesn't enable/disable qemu log */
+    if ( hvm && ctx.stream_phase != XC_STREAM_PHASE_PRE_MIRROR_DISKS )
         assert(callbacks->switch_qemu_logdirty);
     if ( ctx.save.checkpointed )
         assert(callbacks->checkpoint && callbacks->postcopy);

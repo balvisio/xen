@@ -4,6 +4,32 @@
 
 #include <xen/hvm/params.h>
 
+static const unsigned int params[] = {
+    HVM_PARAM_STORE_PFN,
+    HVM_PARAM_IOREQ_PFN,
+    HVM_PARAM_BUFIOREQ_PFN,
+    HVM_PARAM_PAGING_RING_PFN,
+    HVM_PARAM_MONITOR_RING_PFN,
+    HVM_PARAM_SHARING_RING_PFN,
+    HVM_PARAM_VM86_TSS_SIZED,
+    HVM_PARAM_CONSOLE_PFN,
+    HVM_PARAM_ACPI_IOPORTS_LOCATION,
+    HVM_PARAM_VIRIDIAN,
+    HVM_PARAM_IDENT_PT,
+    HVM_PARAM_PAE_ENABLED,
+    HVM_PARAM_VM_GENERATION_ID_ADDR,
+    HVM_PARAM_IOREQ_SERVER_PFN,
+    HVM_PARAM_NR_IOREQ_SERVER_PAGES,
+    HVM_PARAM_X87_FIP_WIDTH,
+    HVM_PARAM_MCA_CAP,
+};
+
+static const unsigned int params_mirroring[] = {
+    HVM_PARAM_STORE_PFN,
+    HVM_PARAM_IOREQ_PFN,
+    HVM_PARAM_BUFIOREQ_PFN,
+};
+
 /*
  * Query for the HVM context and write an HVM_CONTEXT record into the stream.
  */
@@ -58,30 +84,11 @@ static int write_hvm_context(struct xc_sr_context *ctx)
  * Query for a range of HVM parameters and write an HVM_PARAMS record into the
  * stream.
  */
-static int write_hvm_params(struct xc_sr_context *ctx)
+static int write_hvm_params(struct xc_sr_context *ctx,
+                            const unsigned int *params, unsigned int nr_params)
 {
-    static const unsigned int params[] = {
-        HVM_PARAM_STORE_PFN,
-        HVM_PARAM_IOREQ_PFN,
-        HVM_PARAM_BUFIOREQ_PFN,
-        HVM_PARAM_PAGING_RING_PFN,
-        HVM_PARAM_MONITOR_RING_PFN,
-        HVM_PARAM_SHARING_RING_PFN,
-        HVM_PARAM_VM86_TSS_SIZED,
-        HVM_PARAM_CONSOLE_PFN,
-        HVM_PARAM_ACPI_IOPORTS_LOCATION,
-        HVM_PARAM_VIRIDIAN,
-        HVM_PARAM_IDENT_PT,
-        HVM_PARAM_PAE_ENABLED,
-        HVM_PARAM_VM_GENERATION_ID_ADDR,
-        HVM_PARAM_IOREQ_SERVER_PFN,
-        HVM_PARAM_NR_IOREQ_SERVER_PAGES,
-        HVM_PARAM_X87_FIP_WIDTH,
-        HVM_PARAM_MCA_CAP,
-    };
-
     xc_interface *xch = ctx->xch;
-    struct xc_sr_rec_hvm_params_entry entries[ARRAY_SIZE(params)];
+    struct xc_sr_rec_hvm_params_entry entries[nr_params];
     struct xc_sr_rec_hvm_params hdr = {
         .count = 0,
     };
@@ -93,7 +100,7 @@ static int write_hvm_params(struct xc_sr_context *ctx)
     unsigned int i;
     int rc;
 
-    for ( i = 0; i < ARRAY_SIZE(params); i++ )
+    for ( i = 0; i < nr_params; i++ )
     {
         uint32_t index = params[i];
         uint64_t value;
@@ -160,7 +167,8 @@ static int x86_hvm_setup(struct xc_sr_context *ctx)
 
     ctx->save.p2m_size = nr_pfns;
 
-    if ( ctx->save.callbacks->switch_qemu_logdirty(
+    if ( ctx->stream_phase != XC_STREAM_PHASE_PRE_MIRROR_DISKS &&
+         ctx->save.callbacks->switch_qemu_logdirty(
              ctx->domid, 1, ctx->save.callbacks->data) )
     {
         PERROR("Couldn't enable qemu log-dirty mode");
@@ -205,11 +213,42 @@ static int x86_hvm_end_of_checkpoint(struct xc_sr_context *ctx)
         return rc;
 
     /* Write HVM_PARAMS record contains applicable HVM params. */
-    rc = write_hvm_params(ctx);
+    rc = write_hvm_params(ctx, params, ARRAY_SIZE(params));
     if ( rc )
         return rc;
 
     return 0;
+}
+
+static int x86_hvm_send_pre_mirror_disks_pages(struct xc_sr_context *ctx)
+{
+    xc_interface *xch = ctx->xch;
+    uint64_t value;
+    unsigned int i;
+    int rc;
+
+    xc_set_progress_prefix(xch, "Pre-mirroring local disks phase");
+
+    for (i = 0; i < ARRAY_SIZE(params_mirroring); i++)
+    {
+        rc = xc_hvm_param_get(xch, ctx->domid, params_mirroring[i], &value);
+        if ( rc )
+            goto out;
+        rc = add_to_batch(ctx, value);
+        if ( rc )
+            goto out;
+    }
+
+    rc = flush_batch(ctx);
+    if ( rc )
+        goto out;
+
+    rc = write_hvm_params(ctx, params_mirroring, ARRAY_SIZE(params_mirroring));
+    if ( rc )
+        goto out;
+
+ out:
+    return rc;
 }
 
 static int x86_hvm_cleanup(struct xc_sr_context *ctx)
@@ -217,7 +256,8 @@ static int x86_hvm_cleanup(struct xc_sr_context *ctx)
     xc_interface *xch = ctx->xch;
 
     /* If qemu successfully enabled logdirty mode, attempt to disable. */
-    if ( ctx->x86_hvm.save.qemu_enabled_logdirty &&
+    if ( ctx->stream_phase != XC_STREAM_PHASE_PRE_MIRROR_DISKS &&
+         ctx->x86_hvm.save.qemu_enabled_logdirty &&
          ctx->save.callbacks->switch_qemu_logdirty(
              ctx->domid, 0, ctx->save.callbacks->data) )
     {
@@ -230,14 +270,15 @@ static int x86_hvm_cleanup(struct xc_sr_context *ctx)
 
 struct xc_sr_save_ops save_ops_x86_hvm =
 {
-    .pfn_to_gfn          = x86_hvm_pfn_to_gfn,
-    .normalise_page      = x86_hvm_normalise_page,
-    .setup               = x86_hvm_setup,
-    .start_of_stream     = x86_hvm_start_of_stream,
-    .start_of_checkpoint = x86_hvm_start_of_checkpoint,
-    .end_of_checkpoint   = x86_hvm_end_of_checkpoint,
-    .check_vm_state      = x86_hvm_check_vm_state,
-    .cleanup             = x86_hvm_cleanup,
+    .pfn_to_gfn                    = x86_hvm_pfn_to_gfn,
+    .normalise_page                = x86_hvm_normalise_page,
+    .setup                         = x86_hvm_setup,
+    .start_of_stream               = x86_hvm_start_of_stream,
+    .start_of_checkpoint           = x86_hvm_start_of_checkpoint,
+    .end_of_checkpoint             = x86_hvm_end_of_checkpoint,
+    .check_vm_state                = x86_hvm_check_vm_state,
+    .cleanup                       = x86_hvm_cleanup,
+    .pre_mirror_disks_stream_phase = x86_hvm_send_pre_mirror_disks_pages,
 };
 
 /*
