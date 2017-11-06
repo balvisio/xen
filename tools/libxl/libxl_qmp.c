@@ -59,6 +59,13 @@ typedef struct callback_id_pair {
     LIBXL_STAILQ_ENTRY(struct callback_id_pair) next;
 } callback_id_pair;
 
+typedef struct event_handler_pair {
+    const char* event_type;
+    void *opaque;
+    qmp_request_context *context;
+    qmp_callback_t event_handler;
+} event_handler_pair;
+
 struct libxl__qmp_handler {
     struct sockaddr_un addr;
     int qmp_fd;
@@ -66,6 +73,9 @@ struct libxl__qmp_handler {
     time_t timeout;
     /* wait_for_id will be used by the synchronous send function */
     int wait_for_id;
+    /* wait_for_event_type is used to wait on QMP events */
+    const char* wait_for_event_type;
+    event_handler_pair *ehp;
 
     char buffer[QMP_RECEIVE_BUFFER_SIZE + 1];
     libxl__yajl_ctx *yajl_ctx;
@@ -287,6 +297,27 @@ static void qmp_handle_error_response(libxl__gc *gc, libxl__qmp_handler *qmp,
          libxl__json_object_get_string(resp));
 }
 
+static void qmp_handle_event(libxl__gc *gc, libxl__qmp_handler *qmp,
+                             const libxl__json_object *event)
+{
+    const char* event_type = NULL;
+    const libxl__json_object *event_o = NULL;
+    event_o = libxl__json_map_get("event", event, JSON_ANY);
+    event_type = libxl__json_object_get_string(event_o);
+    int rc;
+
+    if(qmp->wait_for_event_type &&
+        !strcmp(event_type, qmp->wait_for_event_type)) {
+        if(qmp->ehp->event_handler) {
+            rc = qmp->ehp->event_handler(qmp,
+                    libxl__json_map_get("data", event, JSON_ANY),
+                    qmp->ehp->opaque);
+        }
+        qmp->ehp->context->rc = rc;
+        qmp->wait_for_event_type = NULL;
+    }
+}
+
 static int qmp_handle_response(libxl__gc *gc, libxl__qmp_handler *qmp,
                                const libxl__json_object *resp)
 {
@@ -325,6 +356,7 @@ static int qmp_handle_response(libxl__gc *gc, libxl__qmp_handler *qmp,
         qmp_handle_error_response(gc, qmp, resp);
         return -1;
     case LIBXL__QMP_MESSAGE_TYPE_EVENT:
+        qmp_handle_event(gc, qmp, resp);
         return 0;
     case LIBXL__QMP_MESSAGE_TYPE_INVALID:
         return -1;
@@ -622,6 +654,32 @@ static int qmp_synchronous_send(libxl__qmp_handler *qmp, const char *cmd,
 static void qmp_free_handler(libxl__qmp_handler *qmp)
 {
     free(qmp);
+}
+
+static int __attribute__((unused)) wait_for_event(libxl__qmp_handler *qmp,
+                                                  event_handler_pair *ehp,
+                                                  int timeout)
+{
+    int ret = 0;
+    GC_INIT(qmp->ctx);
+    qmp->timeout = timeout;
+    qmp_request_context context = { .rc = 0 };
+    qmp->ehp = ehp;
+    qmp->wait_for_event_type = ehp->event_type;
+    ehp->context = &context;
+
+    while (qmp->wait_for_event_type) {
+        if ((ret = qmp_next(gc, qmp)) < 0) {
+            break;
+        }
+    }
+
+    if (!qmp->wait_for_event_type && ret == 0) {
+        ret = context.rc;
+    }
+    GC_FREE;
+
+    return ret;
 }
 
 /*
