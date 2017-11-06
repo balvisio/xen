@@ -255,6 +255,7 @@ int main(int argc, char **argv)
         int hvm =                           atoi(NEXTARG);
         unsigned cbflags =                  strtoul(NEXTARG,0,10);
         xc_migration_stream_t stream_type = strtoul(NEXTARG,0,10);
+        int migration_phase =               atoi(NEXTARG);
         assert(!*++argv);
 
         helper_setcallbacks_save(&helper_save_callbacks, cbflags);
@@ -263,7 +264,7 @@ int main(int argc, char **argv)
         setup_signals(save_signal_handler);
 
         r = xc_domain_save(xch, io_fd, dom, flags, &helper_save_callbacks,
-                           hvm, stream_type, recv_fd);
+                           hvm, stream_type, recv_fd, migration_phase);
         complete(r);
 
     } else if (!strcmp(mode,"--restore-domain")) {
