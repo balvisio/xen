@@ -43,7 +43,7 @@ static void helper_done(libxl__egc *egc, libxl__save_helper_state *shs);
 
 void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
                               libxl__save_helper_state *shs,
-                              int hvm, int pae)
+                              int hvm, int pae, int migration_phase)
 {
     STATE_AO_GC(dcs->ao);
 
@@ -63,18 +63,28 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
         state->console_domid,
         hvm, pae,
         cbflags, dcs->restore_params.checkpointed_stream,
+        migration_phase,
     };
 
     shs->ao = ao;
     shs->domid = domid;
     shs->recv_callback = libxl__srm_callout_received_restore;
     if (dcs->restore_params.checkpointed_stream ==
-        LIBXL_CHECKPOINTED_STREAM_COLO)
+        LIBXL_CHECKPOINTED_STREAM_COLO) {
         shs->completion_callback = libxl__colo_restore_teardown;
-    else
-        shs->completion_callback = libxl__xc_domain_restore_done;
+    } else {
+        if ( migration_phase != LIBXL_MIGRATION_PHASE_MIRROR_DISK ) {
+            shs->completion_callback = libxl__xc_domain_restore_done;
+            if( migration_phase == LIBXL_MIGRATION_PHASE_VIRTUAL_RAM )
+                shs->need_results = 0;
+            else
+                shs->need_results = 1;
+        } else {
+            shs->completion_callback = libxl__xc_mirror_disks_restore_done;
+            shs->need_results = 1;
+        }
+    }
     shs->caller_state = dcs;
-    shs->need_results = 1;
 
     run_helper(egc, shs, "--restore-domain", restore_fd, send_back_fd, 0, 0,
                argnums, ARRAY_SIZE(argnums));
