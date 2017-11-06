@@ -134,7 +134,8 @@ typedef enum {
 int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom,
                    uint32_t flags /* XCFLAGS_xxx */,
                    struct save_callbacks* callbacks, int hvm,
-                   xc_migration_stream_t stream_type, int recv_fd);
+                   xc_migration_stream_t stream_type, int recv_fd,
+                   int migration_phase);
 
 /* callbacks provided by xc_domain_restore */
 struct restore_callbacks {
@@ -199,7 +200,8 @@ int xc_domain_restore(xc_interface *xch, int io_fd, uint32_t dom,
                       unsigned long *console_mfn, uint32_t console_domid,
                       unsigned int hvm, unsigned int pae,
                       xc_migration_stream_t stream_type,
-                      struct restore_callbacks *callbacks, int send_back_fd);
+                      struct restore_callbacks *callbacks, int send_back_fd,
+                      int migration_phase);
 
 /**
  * This function will create a domain for a paravirtualized Linux
