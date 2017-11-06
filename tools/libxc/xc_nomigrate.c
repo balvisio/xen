@@ -22,7 +22,8 @@
 
 int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom, uint32_t flags,
                    struct save_callbacks* callbacks, int hvm,
-                   xc_migration_stream_t stream_type, int recv_fd)
+                   xc_migration_stream_t stream_type, int recv_fd,
+                   int migration_phase)
 {
     errno = ENOSYS;
     return -1;

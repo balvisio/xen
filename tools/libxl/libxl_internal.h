@@ -3799,12 +3799,16 @@ _hidden void libxl__domain_save(libxl__egc *egc,
 /* calls libxl__xc_domain_suspend_done when done */
 _hidden void libxl__xc_domain_save(libxl__egc *egc,
                                    libxl__domain_save_state *dss,
-                                   libxl__save_helper_state *shs);
+                                   libxl__save_helper_state *shs,
+                                   int migration_phase);
 /* If rc==0 then retval is the return value from xc_domain_save
  * and errnoval is the errno value it provided.
  * If rc!=0, retval and errnoval are undefined. */
 _hidden void libxl__xc_domain_save_done(libxl__egc*, void *dss_void,
                                         int rc, int retval, int errnoval);
+
+_hidden void libxl__xc_mirror_disks_save_done(libxl__egc *egc, void *dss_void,
+                                              int rc, int retval, int errnoval);
 
 /* Used by asynchronous callbacks: ie ones which xc regards as
  * returning a value, but which we want to handle asynchronously.
