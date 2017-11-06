@@ -160,7 +160,8 @@ static int x86_hvm_setup(struct xc_sr_context *ctx)
 
     ctx->save.p2m_size = nr_pfns;
 
-    if ( ctx->save.callbacks->switch_qemu_logdirty(
+    if ( ctx->migration_phase != MIGRATION_PHASE_MIRROR_DISK &&
+         ctx->save.callbacks->switch_qemu_logdirty(
              ctx->domid, 1, ctx->save.callbacks->data) )
     {
         PERROR("Couldn't enable qemu log-dirty mode");
@@ -212,12 +213,42 @@ static int x86_hvm_end_of_checkpoint(struct xc_sr_context *ctx)
     return 0;
 }
 
+static int x86_hvm_send_magic_pages(struct xc_sr_context *ctx)
+{
+    xc_interface *xch = ctx->xch;
+    xen_pfn_t pfn;
+    uint64_t value;
+    int rc;
+
+    xc_set_progress_prefix(xch, "HVM Magic Pages");
+
+    rc = xc_hvm_param_get(xch, ctx->domid, HVM_PARAM_IOREQ_SERVER_PFN, &value);
+    if ( rc )
+        goto out;
+
+    for( pfn = value; pfn < X86_HVM_END_SPECIAL_REGION; pfn++ )
+    {
+        rc = add_to_batch(ctx, pfn);
+        if( rc )
+            goto out;
+    }
+
+    rc = flush_batch(ctx);
+    if ( rc )
+        goto out;
+
+    rc = x86_hvm_end_of_checkpoint(ctx);
+ out:
+    return rc;
+}
+
 static int x86_hvm_cleanup(struct xc_sr_context *ctx)
 {
     xc_interface *xch = ctx->xch;
 
     /* If qemu successfully enabled logdirty mode, attempt to disable. */
-    if ( ctx->x86_hvm.save.qemu_enabled_logdirty &&
+    if ( ctx->migration_phase != MIGRATION_PHASE_MIRROR_DISK &&
+         ctx->x86_hvm.save.qemu_enabled_logdirty &&
          ctx->save.callbacks->switch_qemu_logdirty(
              ctx->domid, 0, ctx->save.callbacks->data) )
     {
@@ -230,14 +261,15 @@ static int x86_hvm_cleanup(struct xc_sr_context *ctx)
 
 struct xc_sr_save_ops save_ops_x86_hvm =
 {
-    .pfn_to_gfn          = x86_hvm_pfn_to_gfn,
-    .normalise_page      = x86_hvm_normalise_page,
-    .setup               = x86_hvm_setup,
-    .start_of_stream     = x86_hvm_start_of_stream,
-    .start_of_checkpoint = x86_hvm_start_of_checkpoint,
-    .end_of_checkpoint   = x86_hvm_end_of_checkpoint,
-    .check_vm_state      = x86_hvm_check_vm_state,
-    .cleanup             = x86_hvm_cleanup,
+    .pfn_to_gfn                   = x86_hvm_pfn_to_gfn,
+    .normalise_page               = x86_hvm_normalise_page,
+    .setup                        = x86_hvm_setup,
+    .start_of_stream              = x86_hvm_start_of_stream,
+    .start_of_checkpoint          = x86_hvm_start_of_checkpoint,
+    .end_of_checkpoint            = x86_hvm_end_of_checkpoint,
+    .check_vm_state               = x86_hvm_check_vm_state,
+    .cleanup                      = x86_hvm_cleanup,
+    .mirror_disks_migration_phase = x86_hvm_send_magic_pages,
 };
 
 /*
