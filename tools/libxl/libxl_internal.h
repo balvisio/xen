@@ -1830,6 +1830,17 @@ _hidden int libxl__qmp_nbd_server_add(libxl__gc *gc, int domid,
 /* Start replication */
 _hidden int libxl__qmp_start_replication(libxl__gc *gc, int domid,
                                          bool primary);
+/* Mirror drive */
+_hidden int libxl__qmp_drive_mirror(libxl__gc *gc, int domid,
+                                    const char* device, const char* target,
+                                    const char* format);
+/* Query block devices */
+_hidden int libxl__qmp_query_block(libxl__gc *gc, int domid,
+                                   char *device_names);
+/* Resume QEMU process started with -incoming defer option */
+_hidden int libxl__qmp_migrate_incoming(libxl__gc *gc, int domid,
+                                        const char* uri);
+
 /* Get replication error that occurs when the vm is running */
 _hidden int libxl__qmp_query_xen_replication_status(libxl__gc *gc, int domid);
 /* Do checkpoint */
