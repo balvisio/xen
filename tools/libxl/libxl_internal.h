@@ -3713,6 +3713,7 @@ struct libxl__dm_spawn_state {
     libxl__spawn_state spawn;
     /* filled in by user, must remain valid: */
     uint32_t guest_domid; /* domain being served */
+    int mirror_qemu_disks;
     libxl_domain_config *guest_config;
     libxl__domain_build_state *build_state; /* relates to guest_domid */
     libxl__dm_spawn_cb *callback;
