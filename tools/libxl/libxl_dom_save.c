@@ -411,18 +411,78 @@ void libxl__domain_save(libxl__egc *egc, libxl__domain_save_state *dss)
     dss->sws.fd  = dss->fd;
     dss->sws.back_channel = false;
     dss->sws.completion_callback = stream_done;
+    dss->sws.mirror_qemu_disks = 0;
 
-    libxl__stream_write_start(egc, &dss->sws);
+    if(!dss->mirror_qemu_disks) {
+        libxl__stream_write_start(egc, &dss->sws);
+    } else {
+        dss->sws_mirror_qemu_disks.ao  = dss->ao;
+        dss->sws_mirror_qemu_disks.dss = dss;
+        dss->sws_mirror_qemu_disks.fd  = dss->fd;
+        dss->sws_mirror_qemu_disks.back_channel = false;
+        dss->sws_mirror_qemu_disks.mirror_qemu_disks = 1;
+        dss->sws_mirror_qemu_disks.completion_callback = stream_done;
+        libxl__stream_write_start(egc, &dss->sws_mirror_qemu_disks);
+    }
     return;
 
  out:
     domain_save_done(egc, dss, rc);
 }
 
+static void mirror_qemu_disks(libxl__egc *egc, libxl__stream_write_state *sws,
+                              int rc)
+{
+    int counter = 20;
+    char* target;
+    libxl__domain_save_state *dss = sws->dss;
+    const uint32_t domid = dss->domid;
+    STATE_AO_GC(dss->ao);
+
+    if (rc)
+        goto err;
+    /*
+     * If the -q was provided, the drive-mirror job is started.
+     * TODO: The port should be sent by the destination.
+     */
+ start_mirror:
+    LOGD(DEBUG, domid, "Sleeping for a bit so that source can start NBD\n");
+    sleep(30);
+    LOGD(DEBUG, domid, "Starting mirror-drive of device %s\n",
+         QEMU_DRIVE_MIRROR_DEVICE);
+    target = GCSPRINTF("nbd:%s:%s:exportname=%s", dss->hostname,
+                       QEMU_DRIVE_MIRROR_PORT, QEMU_DRIVE_MIRROR_DEVICE);
+    rc = libxl__qmp_drive_mirror(gc, dss->domid, QEMU_DRIVE_MIRROR_DEVICE,
+                                     target, "raw");
+    if (!rc) {
+        LOGD(DEBUG, domid, "Drive mirror command returned successfully\n");
+    }else{
+        LOGD(ERROR, domid, "Sending drive mirror command failed\n");
+        if(counter > 0){
+            LOGD(INFO, domid, "Counter: %d. Sleeping for 10 sec and retry\n", counter);
+            sleep(10);
+            counter--;
+            goto start_mirror;
+        }else{
+            goto err;
+        }
+    }
+
+    libxl__stream_write_start(egc, &sws->dss->sws);
+    return;
+
+ err:
+   dss->callback(egc, dss, rc);
+}
+
 static void stream_done(libxl__egc *egc,
                         libxl__stream_write_state *sws, int rc)
 {
-    domain_save_done(egc, sws->dss, rc);
+    if(!sws->dss->mirror_qemu_disks || !sws->mirror_qemu_disks) {
+        domain_save_done(egc, sws->dss, rc);
+    } else {
+        mirror_qemu_disks(egc, sws, rc);
+    }
 }
 
 static void domain_save_done(libxl__egc *egc,
