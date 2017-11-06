@@ -330,31 +330,43 @@ static void stream_header_done(libxl__egc *egc,
 static void libxc_header_done(libxl__egc *egc,
                               libxl__stream_write_state *stream)
 {
-    libxl__xc_domain_save(egc, stream->dss, &stream->shs);
+    int save_mirror_disks = stream->dss->mirror_disks;
+    libxl__xc_domain_save(egc, stream->dss, &stream->shs,
+                          save_mirror_disks + stream->mirror_disks);
 }
 
-void libxl__xc_domain_save_done(libxl__egc *egc, void *dss_void,
-                                int rc, int retval, int errnoval)
+static void libxl__xc_domain_save_done(libxl__egc *egc, void *dss_void,
+                                       libxl__stream_write_state *stream,
+                                       int rc, int retval, int errnoval)
 {
     libxl__domain_save_state *dss = dss_void;
-    libxl__stream_write_state *stream = &dss->sws;
     STATE_AO_GC(dss->ao);
 
     if (rc)
         goto err;
 
     if (retval) {
-        LOGEVD(ERROR, errnoval, dss->domid, "saving domain: %s",
-              dss->dsps.guest_responded ?
-              "domain responded to suspend request" :
-              "domain did not respond to suspend request");
-        if (!dss->dsps.guest_responded)
-            rc = ERROR_GUEST_TIMEDOUT;
-        else if (dss->rc)
-            rc = dss->rc;
-        else
-            rc = ERROR_FAIL;
-        goto err;
+        if (!stream->mirror_disks) {
+            LOGEVD(ERROR, errnoval, dss->domid, "saving domain: %s",
+                   dss->dsps.guest_responded ?
+                   "domain responded to suspend request" :
+                   "domain did not respond to suspend request");
+            if (!dss->dsps.guest_responded)
+                rc = ERROR_GUEST_TIMEDOUT;
+            else if (dss->rc)
+                rc = dss->rc;
+            else
+                rc = ERROR_FAIL;
+            goto err;
+        } else {
+            LOGEVD(ERROR, errnoval, dss->domid, "saving domain: Error occurred "
+                   "in libxc pre mirror phase stream");
+            if (dss->rc)
+                rc = dss->rc;
+            else
+                rc = ERROR_FAIL;
+            goto err;
+        }
     }
 
  err:
@@ -378,6 +390,22 @@ void libxl__xc_domain_save_done(libxl__egc *egc, void *dss_void,
         else
             write_emulator_xenstore_record(egc, stream);
     }
+}
+
+void libxl__xc_mirror_disks_save_returned(libxl__egc *egc, void *dss_void,
+                                          int rc, int retval, int errnoval)
+{
+    libxl__domain_save_state *dss = dss_void;
+    libxl__stream_write_state *stream = &dss->sws_mirror_disks;
+    libxl__xc_domain_save_done(egc, dss_void, stream, rc, retval, errnoval);
+}
+
+void libxl__xc_domain_save_returned(libxl__egc *egc, void *dss_void,
+                                    int rc, int retval, int errnoval)
+{
+    libxl__domain_save_state *dss = dss_void;
+    libxl__stream_write_state *stream = &dss->sws;
+    libxl__xc_domain_save_done(egc, dss_void, stream, rc, retval, errnoval);
 }
 
 static void write_emulator_xenstore_record(libxl__egc *egc,
@@ -424,9 +452,12 @@ static void emulator_xenstore_record_done(libxl__egc *egc,
 {
     libxl__domain_save_state *dss = stream->dss;
 
-    if (dss->type == LIBXL_DOMAIN_TYPE_HVM)
-        write_emulator_context_record(egc, stream);
-    else {
+    if (dss->type == LIBXL_DOMAIN_TYPE_HVM) {
+        if (!stream->mirror_disks)
+            write_emulator_context_record(egc, stream);
+        else
+            write_end_record(egc, stream);
+    } else {
         if (stream->in_checkpoint)
             write_checkpoint_end_record(egc, stream);
         else

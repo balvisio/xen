@@ -86,7 +86,7 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
 }
 
 void libxl__xc_domain_save(libxl__egc *egc, libxl__domain_save_state *dss,
-                           libxl__save_helper_state *shs)
+                           libxl__save_helper_state *shs, int stream_phase)
 {
     STATE_AO_GC(dss->ao);
 
@@ -95,13 +95,17 @@ void libxl__xc_domain_save(libxl__egc *egc, libxl__domain_save_state *dss,
 
     const unsigned long argnums[] = {
         dss->domid, dss->xcflags, dss->hvm, cbflags,
-        dss->checkpointed_stream,
+        dss->checkpointed_stream, stream_phase,
     };
 
     shs->ao = ao;
     shs->domid = dss->domid;
     shs->recv_callback = libxl__srm_callout_received_save;
-    shs->completion_callback = libxl__xc_domain_save_done;
+    if ( stream_phase != LIBXL_STREAM_PHASE_PRE_MIRROR_DISKS )
+        shs->completion_callback = libxl__xc_domain_save_returned;
+    else
+        shs->completion_callback = libxl__xc_mirror_disks_save_returned;
+
     shs->caller_state = dss;
     shs->need_results = 0;
 
