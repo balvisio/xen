@@ -279,6 +279,7 @@ int main(int argc, char **argv)
         unsigned int pae =                  strtoul(NEXTARG,0,10);
         unsigned cbflags =                  strtoul(NEXTARG,0,10);
         xc_migration_stream_t stream_type = strtoul(NEXTARG,0,10);
+        int stream_phase =                  atoi(NEXTARG);
         assert(!*++argv);
 
         helper_setcallbacks_restore(&helper_restore_callbacks, cbflags);
@@ -293,7 +294,9 @@ int main(int argc, char **argv)
                               store_domid, console_evtchn, &console_mfn,
                               console_domid, hvm, pae,
                               stream_type,
-                              &helper_restore_callbacks, send_back_fd);
+                              &helper_restore_callbacks, send_back_fd,
+                              stream_phase);
+
         helper_stub_restore_results(store_mfn,console_mfn,0);
         complete(r);
 

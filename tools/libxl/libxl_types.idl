@@ -242,6 +242,12 @@ libxl_checkpointed_stream = Enumeration("checkpointed_stream", [
     (2, "COLO"),
     ])
 
+libxl_stream_phase = Enumeration("stream_phase", [
+    (0, "DEFAULT"),
+    (1, "POST_MIRROR_DISKS"),
+    (2, "PRE_MIRROR_DISKS"),
+    ])
+
 libxl_vuart_type = Enumeration("vuart_type", [
     (0, "unknown"),
     (1, "sbsa_uart"),

@@ -43,7 +43,7 @@ static void helper_done(libxl__egc *egc, libxl__save_helper_state *shs);
 
 void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
                               libxl__save_helper_state *shs,
-                              int hvm, int pae)
+                              int hvm, int pae, int stream_phase)
 {
     STATE_AO_GC(dcs->ao);
 
@@ -63,16 +63,21 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
         state->console_domid,
         hvm, pae,
         cbflags, dcs->restore_params.checkpointed_stream,
+        stream_phase,
     };
 
     shs->ao = ao;
     shs->domid = domid;
     shs->recv_callback = libxl__srm_callout_received_restore;
     if (dcs->restore_params.checkpointed_stream ==
-        LIBXL_CHECKPOINTED_STREAM_COLO)
+        LIBXL_CHECKPOINTED_STREAM_COLO) {
         shs->completion_callback = libxl__colo_restore_teardown;
-    else
-        shs->completion_callback = libxl__xc_domain_restore_done;
+    } else {
+        if ( stream_phase != LIBXL_STREAM_PHASE_PRE_MIRROR_DISKS )
+            shs->completion_callback = libxl__xc_domain_restore_returned;
+        else
+            shs->completion_callback = libxl__xc_mirror_disks_restore_returned;
+    }
     shs->caller_state = dcs;
     shs->need_results = 1;
 

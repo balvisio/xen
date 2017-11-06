@@ -132,7 +132,7 @@ static void colo_resume_vm(libxl__egc *egc,
         return;
     }
 
-    libxl__xc_domain_restore_done(egc, dcs, 0, 0, 0);
+    libxl__xc_domain_restore_done(egc, dcs, dcs->srs, 0, 0, 0);
 
     return;
 }
@@ -325,7 +325,7 @@ void libxl__colo_restore_teardown(libxl__egc *egc, void *dcs_void,
         /* crcs->status is LIBXL_COLO_SETUPED */
         dcs->srs.completion_callback = NULL;
     }
-    libxl__xc_domain_restore_done(egc, dcs, ret, retval, errnoval);
+    libxl__xc_domain_restore_done(egc, dcs, dcs->srs, ret, retval, errnoval);
 
     if (crs->qdisk_setuped) {
         libxl__qmp_stop_replication(gc, crs->domid, false);

@@ -561,6 +561,7 @@ static bool process_record(libxl__egc *egc,
 {
     STATE_AO_GC(stream->ao);
     libxl__domain_create_state *dcs = stream->dcs;
+    int create_mirror_disks = stream->dcs->mirror_disks;
     libxl__sr_record_buf *rec;
     libxl_sr_checkpoint_state *srcs;
     bool further_action_needed = false;
@@ -580,7 +581,9 @@ static bool process_record(libxl__egc *egc,
         break;
 
     case REC_TYPE_LIBXC_CONTEXT:
-        libxl__xc_domain_restore(egc, dcs, &stream->shs, 0, 0);
+        libxl__xc_domain_restore(egc, dcs, &stream->shs, 0, 0,
+                                 stream->mirror_disks +
+                                 create_mirror_disks);
         break;
 
     case REC_TYPE_EMULATOR_XENSTORE_DATA:
@@ -834,10 +837,10 @@ static void stream_done(libxl__egc *egc,
 }
 
 void libxl__xc_domain_restore_done(libxl__egc *egc, void *dcs_void,
+                                   libxl__stream_read_state *stream,
                                    int rc, int retval, int errnoval)
 {
     libxl__domain_create_state *dcs = dcs_void;
-    libxl__stream_read_state *stream = &dcs->srs;
     STATE_AO_GC(dcs->ao);
 
     /* convenience aliases */
@@ -892,6 +895,23 @@ void libxl__xc_domain_restore_done(libxl__egc *egc, void *dcs_void,
             break;
         }
     }
+}
+
+void libxl__xc_domain_restore_returned(libxl__egc *egc, void *dcs_void,
+                                       int rc, int retval, int errnoval)
+{
+    libxl__domain_create_state *dcs = dcs_void;
+    libxl__stream_read_state *stream = &dcs->srs;
+    libxl__xc_domain_restore_done(egc, dcs_void, stream, rc, retval, errnoval);
+}
+
+void libxl__xc_mirror_disks_restore_returned(libxl__egc *egc, void *dcs_void,
+                                             int rc, int retval, int errnoval)
+{
+    libxl__domain_create_state *dcs = dcs_void;
+    libxl__stream_read_state *stream = &dcs->srs_mirror_disks;
+    libxl__xc_domain_restore_done(egc, dcs_void, stream, rc, retval, errnoval);
+
 }
 
 static void conversion_done(libxl__egc *egc,
