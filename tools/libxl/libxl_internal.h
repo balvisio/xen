@@ -3197,6 +3197,7 @@ struct libxl__stream_write_state {
     libxl__domain_save_state *dss;
     int fd;
     bool back_channel;
+    int mirror_disks;
     void (*completion_callback)(libxl__egc *egc,
                                 libxl__stream_write_state *sws,
                                 int rc);
@@ -3296,6 +3297,8 @@ struct libxl__domain_save_state {
     libxl_domain_type type;
     int live;
     int debug;
+    int mirror_disks;
+    const char* hostname;
     int checkpointed_stream;
     const libxl_domain_remus_info *remus;
     /* private */
@@ -3311,6 +3314,7 @@ struct libxl__domain_save_state {
     };
     libxl__checkpoint_devices_state cds;
     libxl__stream_write_state sws;
+    libxl__stream_write_state sws_mirror_disks;
     libxl__logdirty_switch logdirty;
 };
 
