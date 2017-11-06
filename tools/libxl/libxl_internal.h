@@ -3825,12 +3825,17 @@ _hidden int libxl__restore_emulator_xenstore_data
 _hidden void libxl__xc_domain_restore(libxl__egc *egc,
                                       libxl__domain_create_state *dcs,
                                       libxl__save_helper_state *shs,
-                                      int hvm, int pae);
+                                      int hvm, int pae, int migration_phase);
 /* If rc==0 then retval is the return value from xc_domain_save
  * and errnoval is the errno value it provided.
  * If rc!=0, retval and errnoval are undefined. */
 _hidden void libxl__xc_domain_restore_done(libxl__egc *egc, void *dcs_void,
                                            int rc, int retval, int errnoval);
+
+_hidden void libxl__xc_mirror_disks_restore_done(libxl__egc *egc,
+                                                 void *dcs_void,
+                                                 int rc, int retval,
+                                                 int errnoval);
 
 _hidden void libxl__save_helper_init(libxl__save_helper_state *shs);
 _hidden void libxl__save_helper_abort(libxl__egc *egc,
