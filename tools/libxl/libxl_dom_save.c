@@ -25,6 +25,8 @@ static void stream_done(libxl__egc *egc,
                         libxl__stream_write_state *sws, int rc);
 static void domain_save_done(libxl__egc *egc,
                              libxl__domain_save_state *dss, int rc);
+static void domain_mirror_disks(libxl__egc *egc,
+                                libxl__stream_write_state *sws, int rc);
 
 /*----- complicated callback, called by xc_domain_save -----*/
 
@@ -411,12 +413,56 @@ void libxl__domain_save(libxl__egc *egc, libxl__domain_save_state *dss)
     dss->sws.fd  = dss->fd;
     dss->sws.back_channel = false;
     dss->sws.completion_callback = stream_done;
+    dss->sws.mirror_disks = 0;
 
-    libxl__stream_write_start(egc, &dss->sws);
+    if(!dss->mirror_disks) {
+        libxl__stream_write_start(egc, &dss->sws);
+    } else {
+        dss->sws_mirror_disks.ao  = dss->ao;
+        dss->sws_mirror_disks.dss = dss;
+        dss->sws_mirror_disks.fd  = dss->fd;
+        dss->sws_mirror_disks.back_channel = false;
+        dss->sws_mirror_disks.mirror_disks = 1;
+        dss->sws_mirror_disks.completion_callback = domain_mirror_disks;
+        libxl__stream_write_start(egc, &dss->sws_mirror_disks);
+    }
     return;
 
  out:
     domain_save_done(egc, dss, rc);
+}
+
+static void domain_mirror_disks(libxl__egc *egc,
+                                libxl__stream_write_state *sws, int rc)
+{
+    libxl__domain_save_state *dss = sws->dss;
+    STATE_AO_GC(dss->ao);
+    const uint32_t domid = dss->domid;
+    char* target;
+
+    if (rc)
+        goto err;
+
+    rc = libxl__read_fixedmessage(CTX, dss->recv_fd, nbd_server_started_banner,
+                                  sizeof(nbd_server_started_banner)-1,
+                                  "migration stream", 0);
+    if (rc)
+        goto err;
+
+    target = GCSPRINTF("nbd:%s:%s:exportname=%s", dss->hostname,
+                       DRIVE_MIRROR_PORT, DRIVE_MIRROR_DEVICE);
+    rc = libxl__qmp_drive_mirror(gc, dss->domid, DRIVE_MIRROR_DEVICE,
+                                     target, "raw");
+    if (rc) {
+        LOGD(ERROR, domid, "Sending QMP drive mirror command failed");
+        goto err;
+    }
+
+    libxl__stream_write_start(egc, &sws->dss->sws);
+    return;
+
+ err:
+   dss->callback(egc, dss, rc);
 }
 
 static void stream_done(libxl__egc *egc,
