@@ -177,6 +177,7 @@ struct xc_sr_context
     xc_interface *xch;
     uint32_t domid;
     int fd;
+    int migration_phase;
 
     xc_dominfo_t dominfo;
 
