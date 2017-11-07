@@ -138,6 +138,11 @@ struct xc_sr_rec_hvm_params
     struct xc_sr_rec_hvm_params_entry param[0];
 };
 
+/* LIBXC stream phase types */
+#define XC_STREAM_PHASE_DEFAULT 0
+#define XC_STREAM_PHASE_POST_MIRROR_DISKS 1
+#define XC_STREAM_PHASE_PRE_MIRROR_DISKS 2
+
 #endif
 /*
  * Local variables:

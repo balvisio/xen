@@ -736,7 +736,10 @@ static int restore(struct xc_sr_context *ctx)
     struct xc_sr_record rec;
     int rc, saved_rc = 0, saved_errno = 0;
 
-    IPRINTF("Restoring domain");
+    if ( ctx->stream_phase != XC_STREAM_PHASE_PRE_MIRROR_DISKS )
+        IPRINTF("Restoring domain");
+    else
+        IPRINTF("Mirroring disks restoring phase");
 
     rc = setup(ctx);
     if ( rc )
@@ -799,11 +802,16 @@ static int restore(struct xc_sr_context *ctx)
      * With Remus, if we reach here, there must be some error on primary,
      * failover from the last checkpoint state.
      */
-    rc = ctx->restore.ops.stream_complete(ctx);
-    if ( rc )
-        goto err;
+    if ( ctx->stream_phase != XC_STREAM_PHASE_PRE_MIRROR_DISKS )
+    {
+        rc = ctx->restore.ops.stream_complete(ctx);
+        if ( rc )
+            goto err;
 
-    IPRINTF("Restore successful");
+        IPRINTF("Restore successful");
+    } else {
+        IPRINTF("Mirroring disks restore phase successful");
+    }
     goto done;
 
  err:
@@ -837,6 +845,7 @@ int xc_domain_restore(xc_interface *xch, int io_fd, uint32_t dom,
         {
             .xch = xch,
             .fd = io_fd,
+            .stream_phase = stream_phase
         };
 
     /* GCC 4.4 (of CentOS 6.x vintage) can' t initialise anonymous unions. */
@@ -890,29 +899,27 @@ int xc_domain_restore(xc_interface *xch, int io_fd, uint32_t dom,
     ctx.restore.p2m_size = nr_pfns;
 
     if ( ctx.dominfo.hvm )
-    {
         ctx.restore.ops = restore_ops_x86_hvm;
-        if ( restore(&ctx) )
-            return -1;
-    }
     else
-    {
         ctx.restore.ops = restore_ops_x86_pv;
-        if ( restore(&ctx) )
-            return -1;
+
+    if ( restore(&ctx) )
+        return -1;
+
+    if ( stream_phase != XC_STREAM_PHASE_PRE_MIRROR_DISKS )
+    {
+        IPRINTF("XenStore: mfn %#"PRIpfn", dom %d, evt %u",
+                ctx.restore.xenstore_gfn,
+                ctx.restore.xenstore_domid,
+                ctx.restore.xenstore_evtchn);
+
+        IPRINTF("Console: mfn %#"PRIpfn", dom %d, evt %u",
+                ctx.restore.console_gfn,
+                ctx.restore.console_domid,
+                ctx.restore.console_evtchn);
+
+        *console_gfn = ctx.restore.console_gfn;
     }
-
-    IPRINTF("XenStore: mfn %#"PRIpfn", dom %d, evt %u",
-            ctx.restore.xenstore_gfn,
-            ctx.restore.xenstore_domid,
-            ctx.restore.xenstore_evtchn);
-
-    IPRINTF("Console: mfn %#"PRIpfn", dom %d, evt %u",
-            ctx.restore.console_gfn,
-            ctx.restore.console_domid,
-            ctx.restore.console_evtchn);
-
-    *console_gfn = ctx.restore.console_gfn;
     *store_mfn = ctx.restore.xenstore_gfn;
 
     return 0;
