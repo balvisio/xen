@@ -138,6 +138,11 @@ struct xc_sr_rec_hvm_params
     struct xc_sr_rec_hvm_params_entry param[0];
 };
 
+/* Migration Phase */
+#define MIGRATION_PHASE_NON_LOCAL_DISK 0
+#define MIGRATION_PHASE_VIRTUAL_RAM 1
+#define MIGRATION_PHASE_MIRROR_DISK 2
+
 #endif
 /*
  * Local variables:
