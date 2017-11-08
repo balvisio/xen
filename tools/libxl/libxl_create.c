@@ -777,6 +777,10 @@ static void domcreate_stream_done(libxl__egc *egc,
                                   libxl__stream_read_state *srs,
                                   int ret);
 
+static void __attribute__((unused)) domcreate_start_nbd_server(libxl__egc *egc,
+                                                     libxl__dm_spawn_state *dmss,
+                                                     int ret);
+
 static void domcreate_rebuild_done(libxl__egc *egc,
                                    libxl__domain_create_state *dcs,
                                    int ret);
@@ -1034,6 +1038,50 @@ static void libxl__colo_restore_setup_done(libxl__egc *egc,
     }
 
     libxl__stream_read_start(egc, &dcs->srs);
+}
+
+static void domcreate_start_nbd_server(libxl__egc *egc,
+                                       libxl__dm_spawn_state *dmss, int ret)
+{
+    libxl__domain_create_state *dcs = CONTAINER_OF(dmss, *dcs, sdss.dm);
+    STATE_AO_GC(dmss->spawn.ao);
+    const uint32_t domid = dcs->guest_domid;
+    dcs->sdss.dm.guest_domid = domid;
+
+    if (ret) {
+        LOGD(ERROR, domid, "device model did not start: %d", ret);
+        goto error_out;
+    }
+
+    if(dcs->restore_fd >= 0 && dcs->mirror_qemu_disks) {
+            LOGD(DEBUG, domid, "Starting NBD Server\n");
+            ret = libxl__qmp_nbd_server_start(gc, domid, "::", QEMU_DRIVE_MIRROR_PORT);
+            if (ret) {
+                ret = ERROR_FAIL;
+                LOGD(ERROR, domid, "Failed to start NBD Server\n");
+                goto skip_nbd;
+            }else{
+                LOGD(INFO, domid, "Started NBD Server Successfully\n");
+            }
+
+            ret = libxl__qmp_nbd_server_add(gc, domid, QEMU_DRIVE_MIRROR_DEVICE);
+
+            if (ret) {
+                ret = ERROR_FAIL;
+                LOGD(ERROR, domid, "Failed to add NBD Server\n");
+                goto skip_nbd;
+            } else {
+                LOGD(INFO, domid, "NBD Add Successful\n");
+            }
+        }
+
+skip_nbd:
+    libxl__stream_read_start(egc, &dcs->srs);
+    return;
+
+error_out:
+    assert(ret);
+    domcreate_complete(egc, dcs, ret);
 }
 
 static void domcreate_bootloader_done(libxl__egc *egc,
