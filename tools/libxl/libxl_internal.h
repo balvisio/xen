@@ -3121,6 +3121,7 @@ struct libxl__stream_read_state {
     int fd;
     bool legacy;
     bool back_channel;
+    int mirror_qemu_disks;
     void (*completion_callback)(libxl__egc *egc,
                                 libxl__stream_read_state *srs,
                                 int rc);
@@ -3777,6 +3778,7 @@ struct libxl__domain_create_state {
         /* If we're not doing stubdom, we use only dmss.dm,
          * for the non-stubdom device model. */
     libxl__stream_read_state srs;
+    libxl__stream_read_state srs_mirror_qemu_disks;
     /* necessary if the domain creation failed and we have to destroy it */
     libxl__domain_destroy_state dds;
     libxl__multidev multidev;
