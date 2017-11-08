@@ -1453,6 +1453,9 @@ int libxl_domain_suspend(libxl_ctx *ctx, uint32_t domid, int fd,
 #define LIBXL_SUSPEND_LIVE 2
 #define LIBXL_SUSPEND_MIRROR_QEMU_DISKS 4
 
+#define QEMU_DRIVE_MIRROR_PORT "11000"
+#define QEMU_DRIVE_MIRROR_DEVICE "ide0-hd0"
+
 /* @param suspend_cancel [from xenctrl.h:xc_domain_resume( @param fast )]
  *   If this parameter is true, use co-operative resume. The guest
  *   must support this.
