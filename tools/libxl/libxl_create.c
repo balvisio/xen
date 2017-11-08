@@ -777,6 +777,14 @@ static void domcreate_stream_done(libxl__egc *egc,
                                   libxl__stream_read_state *srs,
                                   int ret);
 
+static void domcreate_mirror_disk_stream_done(libxl__egc *egc,
+                                              libxl__stream_read_state *srs,
+                                              int ret);
+
+static void domcreate_start_nbd_server(libxl__egc *egc,
+                                       libxl__dm_spawn_state *dmss,
+                                       int ret);
+
 static void domcreate_rebuild_done(libxl__egc *egc,
                                    libxl__domain_create_state *dcs,
                                    int ret);
@@ -1036,6 +1044,47 @@ static void libxl__colo_restore_setup_done(libxl__egc *egc,
     libxl__stream_read_start(egc, &dcs->srs);
 }
 
+static void domcreate_start_nbd_server(libxl__egc *egc,
+                                       libxl__dm_spawn_state *dmss, int ret)
+{
+    libxl__domain_create_state *dcs = CONTAINER_OF(dmss, *dcs, sdss.dm);
+    STATE_AO_GC(dmss->spawn.ao);
+    const uint32_t domid = dcs->guest_domid;
+    dcs->sdss.dm.guest_domid = domid;
+
+    if (ret) {
+        LOGD(ERROR, domid, "device model did not start: %d", ret);
+        goto error_out;
+    }
+
+    ret = libxl__qmp_nbd_server_start(gc, domid, "::", QEMU_DRIVE_MIRROR_PORT);
+    if (ret) {
+        LOGD(ERROR, domid, "Failed to start NBD Server");
+        goto error_out;
+    }
+
+    ret = libxl__qmp_nbd_server_add(gc, domid, QEMU_DRIVE_MIRROR_DEVICE);
+    if (ret) {
+        LOGD(ERROR, domid, "Failed to add NBD Server");
+        goto error_out;
+    }
+
+    ret = libxl_write_exactly(CTX, dcs->send_back_fd,
+                              nbd_server_started_banner,
+                              sizeof(nbd_server_started_banner)-1,
+                              "migration stream",
+                              "nbd server success/failure report");
+    if (ret)
+        goto error_out;
+
+    libxl__stream_read_start(egc, &dcs->srs);
+    return;
+
+error_out:
+    assert(ret);
+    domcreate_complete(egc, dcs, ret);
+}
+
 static void domcreate_bootloader_done(libxl__egc *egc,
                                       libxl__bootloader_state *bl,
                                       int rc)
@@ -1053,6 +1102,8 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     libxl_domain_build_info *const info = &d_config->b_info;
     libxl__srm_restore_autogen_callbacks *const callbacks =
         &dcs->srs.shs.callbacks.restore.a;
+    libxl__srm_restore_autogen_callbacks *const callbacks_mirror_qemu_disks =
+        &dcs->srs_mirror_qemu_disks.shs.callbacks.restore.a;
 
     if (rc) {
         domcreate_rebuild_done(egc, dcs, rc);
@@ -1070,8 +1121,14 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     dcs->sdss.dm.spawn.ao = ao;
     dcs->sdss.dm.guest_config = dcs->guest_config;
     dcs->sdss.dm.build_state = &dcs->build_state;
-    dcs->sdss.dm.callback = domcreate_devmodel_started;
-    dcs->sdss.callback = domcreate_devmodel_started;
+    dcs->sdss.dm.mirror_qemu_disks = dcs->mirror_qemu_disks;
+    if(!dcs->mirror_qemu_disks) {
+        dcs->sdss.dm.callback = domcreate_devmodel_started;
+        dcs->sdss.callback = domcreate_devmodel_started;
+    }else{
+        dcs->sdss.dm.callback = domcreate_start_nbd_server;
+        dcs->sdss.callback = domcreate_start_nbd_server;
+    }
 
     if (restore_fd < 0 && dcs->domid_soft_reset == INVALID_DOMID) {
         rc = libxl__domain_build(gc, d_config, domid, state);
@@ -1081,6 +1138,7 @@ static void domcreate_bootloader_done(libxl__egc *egc,
 
     /* Restore */
     callbacks->restore_results = libxl__srm_callout_callback_restore_results;
+    callbacks_mirror_qemu_disks->restore_results = libxl__srm_callout_callback_restore_results;
 
     /* COLO only supports HVM now because it does not work very
      * well with pv drivers:
@@ -1106,7 +1164,21 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     dcs->srs.fd = restore_fd;
     dcs->srs.legacy = (dcs->restore_params.stream_version == 1);
     dcs->srs.back_channel = false;
-    dcs->srs.completion_callback = domcreate_stream_done;
+    dcs->srs.mirror_qemu_disks = 0;
+
+    if(dcs->mirror_qemu_disks) {
+        dcs->srs_mirror_qemu_disks.ao = ao;
+        dcs->srs_mirror_qemu_disks.dcs = dcs;
+        dcs->srs_mirror_qemu_disks.fd = restore_fd;
+        dcs->srs_mirror_qemu_disks.legacy = (dcs->restore_params.stream_version == 1);
+        dcs->srs_mirror_qemu_disks.back_channel = false;
+        dcs->srs_mirror_qemu_disks.completion_callback = domcreate_stream_done;
+        dcs->srs_mirror_qemu_disks.mirror_qemu_disks = 1;
+
+        dcs->srs.completion_callback = domcreate_mirror_disk_stream_done;
+    } else {
+        dcs->srs.completion_callback = domcreate_stream_done;
+    }
 
     if (restore_fd >= 0) {
         switch (checkpointed_stream) {
@@ -1124,7 +1196,11 @@ static void domcreate_bootloader_done(libxl__egc *egc,
             libxl__remus_restore_setup(egc, dcs);
             /* fall through */
         case LIBXL_CHECKPOINTED_STREAM_NONE:
-            libxl__stream_read_start(egc, &dcs->srs);
+            if (dcs->mirror_qemu_disks) {
+                libxl__stream_read_start(egc, &dcs->srs_mirror_qemu_disks);
+            } else {
+                libxl__stream_read_start(egc, &dcs->srs);
+            }
         }
         return;
     }
@@ -1144,6 +1220,37 @@ void libxl__srm_callout_callback_restore_results(xen_pfn_t store_mfn,
     state->store_mfn =            store_mfn;
     state->console_mfn =          console_mfn;
     shs->need_results =           0;
+}
+
+static void domcreate_mirror_disk_stream_done(libxl__egc *egc,
+                                              libxl__stream_read_state *srs,
+                                              int ret)
+{
+    libxl__domain_create_state *dcs = srs->dcs;
+    STATE_AO_GC(dcs->ao);
+
+    const uint32_t domid = dcs->guest_domid;
+    const char* uri;
+    const char* state_file = GCSPRINTF(
+                             LIBXL_DEVICE_MODEL_RESTORE_FILE".%d", domid);
+    if (ret)
+        goto error_out;
+
+    ret = libxl__qmp_nbd_server_stop(gc, domid);
+    if (ret){
+        LOGD(ERROR, domid, "Failed to stop NBD server");
+        goto error_out;
+    }
+    uri = GCSPRINTF("exec: /bin/cat %s", state_file);
+    ret = libxl__qmp_migrate_incoming(gc, domid, uri);
+    if (ret)
+        goto error_out;
+    domcreate_devmodel_started(egc, &dcs->sdss.dm, ret);
+    return;
+
+error_out:
+    assert(ret);
+    domcreate_complete(egc, dcs, ret);
 }
 
 static void domcreate_stream_done(libxl__egc *egc,
@@ -1212,7 +1319,7 @@ static void domcreate_stream_done(libxl__egc *egc,
     if (ret)
         goto out;
 
-    if (info->type == LIBXL_DOMAIN_TYPE_HVM) {
+    if (info->type == LIBXL_DOMAIN_TYPE_HVM && !dcs->mirror_qemu_disks) {
         state->saved_state = GCSPRINTF(
                        LIBXL_DEVICE_MODEL_RESTORE_FILE".%d", domid);
     }
