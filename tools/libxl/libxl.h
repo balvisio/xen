@@ -1444,7 +1444,7 @@ int libxl_retrieve_domain_configuration(libxl_ctx *ctx, uint32_t domid,
                                         libxl_domain_config *d_config)
                                         LIBXL_EXTERNAL_CALLERS_ONLY;
 
-int libxl_domain_suspend(libxl_ctx *ctx, uint32_t domid, int fd,
+int libxl_domain_suspend(libxl_ctx *ctx, uint32_t domid, int fd, int recv_fd,
                          int flags, /* LIBXL_SUSPEND_* */
                          const char* hostname,
                          const libxl_asyncop_how *ao_how)
