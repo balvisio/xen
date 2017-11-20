@@ -188,7 +188,8 @@ static void migrate_domain(uint32_t domid, const char *rune, int debug,
         flags |= LIBXL_SUSPEND_DEBUG;
     if(mirror_qemu_disks)
         flags |= LIBXL_SUSPEND_MIRROR_QEMU_DISKS;
-    rc = libxl_domain_suspend(ctx, domid, send_fd, flags, hostname, NULL);
+    rc = libxl_domain_suspend(ctx, domid, send_fd, recv_fd, flags, hostname,
+                              NULL);
     if (rc) {
         fprintf(stderr, "migration sender: libxl_domain_suspend failed"
                 " (rc=%d)\n", rc);
