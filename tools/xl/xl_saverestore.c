@@ -141,7 +141,7 @@ static int save_domain(uint32_t domid, const char *filename, int checkpoint,
 
     save_domain_core_writeconfig(fd, filename, config_data, config_len);
 
-    int rc = libxl_domain_suspend(ctx, domid, fd, 0, NULL, NULL);
+    int rc = libxl_domain_suspend(ctx, domid, fd, 0, 0, NULL, NULL);
     close(fd);
 
     if (rc < 0) {
