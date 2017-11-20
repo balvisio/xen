@@ -510,6 +510,27 @@ int libxl__read_sysfs_file_contents(libxl__gc *gc, const char *filename,
 READ_WRITE_EXACTLY(read, 1, /* */)
 READ_WRITE_EXACTLY(write, 0, const)
 
+int libxl__read_fixedmessage(libxl_ctx *ctx, int fd, const void *msg, int msgsz,
+                             const char *what, const char *rune)
+{
+    char buf[msgsz];
+    const char *stream;
+    int rc;
+
+    stream = rune ? "migration receiver stream" : "migration stream";
+    rc = libxl_read_exactly(ctx, fd, buf, msgsz, stream, what);
+    if (rc) return 1;
+
+    if (memcmp(buf, msg, msgsz)) {
+        fprintf(stderr, "%s contained unexpected data instead of %s\n",
+                stream, what);
+        if (rune)
+            fprintf(stderr, "(command run was: %s )\n", rune);
+        return 1;
+    }
+    return 0;
+}
+
 int libxl__remove_file(libxl__gc *gc, const char *path)
 {
     for (;;) {

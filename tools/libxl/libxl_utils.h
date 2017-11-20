@@ -56,6 +56,9 @@ int libxl_write_exactly(libxl_ctx *ctx, int fd, const void *data,
    * logged using filename (which is only used for logging) and what
    * (which may be 0). */
 
+int libxl__read_fixedmessage(libxl_ctx *ctx, int fd, const void *msg, int msgsz,
+                             const char *what, const char *rune);
+
 int libxl_pipe(libxl_ctx *ctx, int pipes[2]);
   /* Just like pipe(2), but log errors. */
 
