@@ -68,26 +68,6 @@ static pid_t create_migration_child(const char *rune, int *send_fd,
     return child;
 }
 
-static int migrate_read_fixedmessage(int fd, const void *msg, int msgsz,
-                                     const char *what, const char *rune) {
-    char buf[msgsz];
-    const char *stream;
-    int rc;
-
-    stream = rune ? "migration receiver stream" : "migration stream";
-    rc = libxl_read_exactly(ctx, fd, buf, msgsz, stream, what);
-    if (rc) return 1;
-
-    if (memcmp(buf, msg, msgsz)) {
-        fprintf(stderr, "%s contained unexpected data instead of %s\n",
-                stream, what);
-        if (rune)
-            fprintf(stderr, "(command run was: %s )\n", rune);
-        return 1;
-    }
-    return 0;
-}
-
 static void migration_child_report(int recv_fd) {
     pid_t child;
     int status, sr;
@@ -162,9 +142,9 @@ static void migrate_do_preamble(int send_fd, int recv_fd, pid_t child,
         exit(EXIT_FAILURE);
     }
 
-    rc = migrate_read_fixedmessage(recv_fd, migrate_receiver_banner,
-                                   sizeof(migrate_receiver_banner)-1,
-                                   "banner", rune);
+    rc = libxl__read_fixedmessage(ctx, recv_fd, migrate_receiver_banner,
+                                  sizeof(migrate_receiver_banner)-1,
+                                  "banner", rune);
     if (rc) {
         close(send_fd);
         migration_child_report(recv_fd);
@@ -219,9 +199,9 @@ static void migrate_domain(uint32_t domid, const char *rune, int debug,
     // Should only be printed when debugging as it's a bit messy with
     // progress indication.
 
-    rc = migrate_read_fixedmessage(recv_fd, migrate_receiver_ready,
-                                   sizeof(migrate_receiver_ready),
-                                   "ready message", rune);
+    rc = libxl__read_fixedmessage(ctx, recv_fd, migrate_receiver_ready,
+                                  sizeof(migrate_receiver_ready),
+                                  "ready message", rune);
     if (rc) goto failed_resume;
 
     xtl_stdiostream_adjust_flags(logger, 0, XTL_STDIOSTREAM_HIDE_PROGRESS);
@@ -251,9 +231,9 @@ static void migrate_domain(uint32_t domid, const char *rune, int debug,
                              "migration stream", "GO message");
     if (rc) goto failed_badly;
 
-    rc = migrate_read_fixedmessage(recv_fd, migrate_report,
-                                   sizeof(migrate_report),
-                                   "success/failure report message", rune);
+    rc = libxl__read_fixedmessage(ctx, recv_fd, migrate_report,
+                                  sizeof(migrate_report),
+                                  "success/failure report message", rune);
     if (rc) goto failed_badly;
 
     rc = libxl_read_exactly(ctx, recv_fd,
@@ -265,10 +245,10 @@ static void migrate_domain(uint32_t domid, const char *rune, int debug,
         fprintf(stderr, "migration sender: Target reports startup failure"
                 " (status code %d).\n", rc_buf);
 
-        rc = migrate_read_fixedmessage(recv_fd, migrate_permission_to_go,
-                                       sizeof(migrate_permission_to_go),
-                                       "permission for sender to resume",
-                                       rune);
+        rc = libxl__read_fixedmessage(ctx, recv_fd, migrate_permission_to_go,
+                                      sizeof(migrate_permission_to_go),
+                                      "permission for sender to resume",
+                                      rune);
         if (rc) goto failed_badly;
 
         fprintf(stderr, "migration sender: Trying to resume at our end.\n");
@@ -416,9 +396,9 @@ static void migrate_receive(int debug, int daemonize, int monitor,
                              "migration ack stream", "ready message");
     if (rc) exit(EXIT_FAILURE);
 
-    rc = migrate_read_fixedmessage(recv_fd, migrate_permission_to_go,
-                                   sizeof(migrate_permission_to_go),
-                                   "GO message", 0);
+    rc = libxl__read_fixedmessage(ctx, recv_fd, migrate_permission_to_go,
+                                  sizeof(migrate_permission_to_go),
+                                  "GO message", 0);
     if (rc) goto perhaps_destroy_notify_rc;
 
     fprintf(stderr, "migration target: Got permission, starting domain.\n");
