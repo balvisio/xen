@@ -84,6 +84,7 @@ static int write_batch(struct xc_sr_context *ctx)
     void **guest_data = NULL;
     void **local_pages = NULL;
     int *errors = NULL, rc = -1;
+    int j;
     unsigned i, p, nr_pages = 0, nr_pages_mapped = 0;
     unsigned nr_pfns = ctx->save.nr_batch_pfns;
     void *page, *orig_page;
@@ -162,6 +163,7 @@ static int write_batch(struct xc_sr_context *ctx)
         }
         nr_pages_mapped = nr_pages;
 
+        fprintf(stderr, "start\n");
         for ( i = 0, p = 0; i < nr_pfns; ++i )
         {
             switch ( types[i] )
@@ -180,10 +182,35 @@ static int write_batch(struct xc_sr_context *ctx)
             }
 
             orig_page = page = guest_mapping + (p * PAGE_SIZE);
+
+
+            /*******************************************/
+
+            fprintf(stderr, "PFN: %#"PRIpfn"\n", ctx->save.batch_pfns[i]);
+            fprintf(stderr, "start\n");
+            for (j = 0; j < PAGE_SIZE; j++){
+                fprintf(stderr, "j: %d, %02X\n", j, ((char*) page)[j] & 0xff );
+            }
+            fprintf(stderr, "end\n");
+
+            /*******************************************/
+
+            for (j = 0; j < PAGE_SIZE; j++){
+                fprintf(stderr, "%c", ((char*) page)[j]);
+            }
             rc = ctx->save.ops.normalise_page(ctx, types[i], &page);
 
             if ( orig_page != page )
                 local_pages[i] = page;
+
+            /*******************************************/
+            fprintf(stderr, "AFTER NORM PAGE\n");
+            fprintf(stderr, "start\n");
+            for (j = 0; j < PAGE_SIZE; j++){
+                fprintf(stderr, "j: %d, %02X\n", j, ((char*) page)[j] & 0xff );
+            }
+            fprintf(stderr, "end\n");
+            /*******************************************/
 
             if ( rc )
             {
@@ -203,6 +230,7 @@ static int write_batch(struct xc_sr_context *ctx)
             rc = -1;
             ++p;
         }
+        fprintf(stderr, "\nend\n");
     }
 
     rec_pfns = malloc(nr_pfns * sizeof(*rec_pfns));
