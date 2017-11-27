@@ -737,7 +737,7 @@ static int restore(struct xc_sr_context *ctx)
     int rc, saved_rc = 0, saved_errno = 0;
 
     IPRINTF("Restoring domain");
-
+    fprintf(stderr, "BRUNO: In restore\n");
     rc = setup(ctx);
     if ( rc )
         goto err;
@@ -859,7 +859,7 @@ int xc_domain_restore(xc_interface *xch, int io_fd, uint32_t dom,
                callbacks->wait_checkpoint &&
                callbacks->restore_results);
     }
-
+    fprintf(stderr, "BRUNO: In xc_domain_restore\n");
     DPRINTF("fd %d, dom %u, hvm %u, pae %u, stream_type %d",
             io_fd, dom, hvm, pae, stream_type);
 

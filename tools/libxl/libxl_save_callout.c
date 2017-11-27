@@ -76,6 +76,7 @@ void libxl__xc_domain_restore(libxl__egc *egc, libxl__domain_create_state *dcs,
     shs->caller_state = dcs;
     shs->need_results = 1;
 
+    fprintf(stderr, "BRUNO BEFORE --restore-domain helper. Restore fd: %d\n", restore_fd);
     run_helper(egc, shs, "--restore-domain", restore_fd, send_back_fd, 0, 0,
                argnums, ARRAY_SIZE(argnums));
 }

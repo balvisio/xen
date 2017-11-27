@@ -562,6 +562,7 @@ int libxl__domain_make(libxl__gc *gc, libxl_domain_config *d_config,
 
     /* Valid domid here means we're soft resetting. */
     if (!libxl_domid_valid_guest(*domid)) {
+        fprintf(stderr, "BRUNO before : xc_domain_create\n");
         ret = xc_domain_create(ctx->xch, info->ssidref, handle, flags, domid,
                                xc_config);
         if (ret < 0) {
@@ -938,7 +939,7 @@ static void initiate_domain_create(libxl__egc *egc,
         LOGD(ERROR, domid, "Cannot enable PoD and ALTP2M at the same time");
         goto error_out;
     }
-
+    fprintf(stderr, "BRUNO before libxl__domain_make\n");
     ret = libxl__domain_make(gc, d_config, &domid, &state->config);
     if (ret) {
         LOGD(ERROR, domid, "cannot make domain: %d", ret);
@@ -1109,6 +1110,7 @@ static void domcreate_bootloader_done(libxl__egc *egc,
     dcs->srs.completion_callback = domcreate_stream_done;
 
     if (restore_fd >= 0) {
+        fprintf(stderr, "BRUNO in domcreate_bootloader_done: Restore_fd: %d", restore_fd);
         switch (checkpointed_stream) {
         case LIBXL_CHECKPOINTED_STREAM_COLO:
             /* colo restore setup */
@@ -1897,7 +1899,7 @@ int libxl_domain_create_restore(libxl_ctx *ctx, libxl_domain_config *d_config,
     } else {
         unset_disk_colo_restore(d_config);
     }
-
+    fprintf(stderr, "BRUNO: before do_domain_create. Restore_fd: %d\n", restore_fd);
     return do_domain_create(ctx, d_config, domid, restore_fd, send_back_fd,
                             params, ao_how, aop_console_how);
 }

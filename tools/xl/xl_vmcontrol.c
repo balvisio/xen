@@ -879,7 +879,7 @@ start:
         params.colo_proxy_script = dom_info->colo_proxy_script;
         libxl_defbool_set(&params.userspace_colo_proxy,
                           dom_info->userspace_colo_proxy);
-
+        fprintf(stderr, "BRUNO: Before libxl_domain_create_restore. If restoring. Restore fd: %d\n", restore_fd);
         ret = libxl_domain_create_restore(ctx, &d_config,
                                           &domid, restore_fd,
                                           send_back_fd, &params,

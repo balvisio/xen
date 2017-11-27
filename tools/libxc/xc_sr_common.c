@@ -96,7 +96,7 @@ int read_record(struct xc_sr_context *ctx, int fd, struct xc_sr_record *rec)
     xc_interface *xch = ctx->xch;
     struct xc_sr_rhdr rhdr;
     size_t datasz;
-
+    fprintf(stderr, "BRUNO: In read_record\n");
     if ( read_exact(fd, &rhdr, sizeof(rhdr)) )
     {
         PERROR("Failed to read Record Header from stream");
