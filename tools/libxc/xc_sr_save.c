@@ -412,7 +412,7 @@ static int send_all_pages(struct xc_sr_context *ctx)
     return send_dirty_pages(ctx, ctx->save.p2m_size);
 }
 
-static void clear_virtual_devices_memory(struct xc_sr_context *ctx)
+/*static void clear_virtual_devices_memory(struct xc_sr_context *ctx)
 {
     xen_pfn_t p;
     DECLARE_HYPERCALL_BUFFER_SHADOW(unsigned long, dirty_bitmap,
@@ -424,9 +424,9 @@ static void clear_virtual_devices_memory(struct xc_sr_context *ctx)
         }
     }
     return;
-}
+}*/
 
-static int send_virtual_ram(struct xc_sr_context *ctx)
+/*static int send_virtual_ram(struct xc_sr_context *ctx)
 {
     DECLARE_HYPERCALL_BUFFER_SHADOW(unsigned long, dirty_bitmap,
                                     &ctx->save.dirty_bitmap_hbuf);
@@ -437,10 +437,10 @@ static int send_virtual_ram(struct xc_sr_context *ctx)
      * On the second stream of a migration with local disk,
      * don't send the vfb, virtual devices. Only virtual RAM
      */
-    clear_virtual_devices_memory(ctx);
+    /*clear_virtual_devices_memory(ctx);
 
     return send_dirty_pages(ctx, ctx->save.p2m_size);
-}
+}*/
 
 static int send_specific_pages(struct xc_sr_context *ctx, uint64_t value)
 {
@@ -467,7 +467,7 @@ static int send_virtual_devices_and_params(struct xc_sr_context *ctx)
     xc_set_progress_prefix(xch, "Frames");
 
     //FOR RTL AND VGA IN 128MB VM . Might change on size of VM
-    for( i = 0x8000; i < 0x8050; i++ )
+ /*   for( i = 0x8000; i < 0x8050; i++ )
     {
         rc = send_specific_pages(ctx, i);
         if( rc )
@@ -487,7 +487,7 @@ static int send_virtual_devices_and_params(struct xc_sr_context *ctx)
         rc = send_specific_pages(ctx, i);
         if( rc )
             goto out;
-    }
+    }*/
 
     for( i = 0xfeff2; i < 0xff000; i++ )
     {
@@ -619,10 +619,7 @@ static int send_memory_live(struct xc_sr_context *ctx)
             rc = update_progress_string(ctx, &progress_str);
             if ( rc )
                 goto out;
-            if ( !ctx->migration_phase )
-                rc = send_dirty_pages(ctx, stats.dirty_count);
-            else
-                rc = send_virtual_ram(ctx);
+            rc = send_dirty_pages(ctx, stats.dirty_count);
 
             if ( rc )
                 goto out;
