@@ -412,9 +412,6 @@ static int send_all_pages(struct xc_sr_context *ctx)
     return send_dirty_pages(ctx, ctx->save.p2m_size);
 }
 
-
-
-
 static int send_specific_pages(struct xc_sr_context *ctx, uint64_t value)
 {
 
@@ -569,6 +566,7 @@ static int send_memory_live(struct xc_sr_context *ctx)
             rc = update_progress_string(ctx, &progress_str);
             if ( rc )
                 goto out;
+
             rc = send_dirty_pages(ctx, stats.dirty_count);
             if ( rc )
                 goto out;
@@ -598,8 +596,6 @@ static int send_memory_live(struct xc_sr_context *ctx)
 
         policy_stats->dirty_count = stats.dirty_count;
 
-        if ( stats.dirty_count == 0 )
-            break;
     }
 
  out:
@@ -1039,7 +1035,7 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom,
            stream_type == XC_MIG_STREAM_COLO);
 
     /* Sanity checks for callbacks. */
-    /* Now the mirror qemu stream doesn't enable/disable qemu log */
+    /* The disk mirror qemu stream doesn't enable/disable qemu log */
     if ( hvm && ctx.migration_phase != MIGRATION_PHASE_MIRROR_DISK )
         assert(callbacks->switch_qemu_logdirty);
     if ( ctx.save.checkpointed )
