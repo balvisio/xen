@@ -412,35 +412,8 @@ static int send_all_pages(struct xc_sr_context *ctx)
     return send_dirty_pages(ctx, ctx->save.p2m_size);
 }
 
-/*static void clear_virtual_devices_memory(struct xc_sr_context *ctx)
-{
-    xen_pfn_t p;
-    DECLARE_HYPERCALL_BUFFER_SHADOW(unsigned long, dirty_bitmap,
-                                    &ctx->save.dirty_bitmap_hbuf);
 
-    for ( p = 0x7800; p < 0xfeff2; p++ ){
-        if ( test_bit(p, dirty_bitmap) ){
-            clear_bit(p, dirty_bitmap);
-        }
-    }
-    return;
-}*/
 
-/*static int send_virtual_ram(struct xc_sr_context *ctx)
-{
-    DECLARE_HYPERCALL_BUFFER_SHADOW(unsigned long, dirty_bitmap,
-                                    &ctx->save.dirty_bitmap_hbuf);
-
-    bitmap_set(dirty_bitmap, ctx->save.p2m_size);
-
-    /*
-     * On the second stream of a migration with local disk,
-     * don't send the vfb, virtual devices. Only virtual RAM
-     */
-    /*clear_virtual_devices_memory(ctx);
-
-    return send_dirty_pages(ctx, ctx->save.p2m_size);
-}*/
 
 static int send_specific_pages(struct xc_sr_context *ctx, uint64_t value)
 {
@@ -465,29 +438,6 @@ static int send_virtual_devices_and_params(struct xc_sr_context *ctx)
     int rc = 0;
 
     xc_set_progress_prefix(xch, "Frames");
-
-    //FOR RTL AND VGA IN 128MB VM . Might change on size of VM
- /*   for( i = 0x8000; i < 0x8050; i++ )
-    {
-        rc = send_specific_pages(ctx, i);
-        if( rc )
-            goto out;
-    }
-    //VGA
-    for( i = 0xf0000; i < 0xf0800; i++ )
-    {
-        rc = send_specific_pages(ctx, i);
-        if( rc )
-            goto out;
-    }
-
-    //Virtual Device
-    for( i = 0xfc000; i < 0xfc00b; i++ )
-    {
-        rc = send_specific_pages(ctx, i);
-        if( rc )
-            goto out;
-    }*/
 
     for( i = 0xfeff2; i < 0xff000; i++ )
     {
@@ -620,7 +570,6 @@ static int send_memory_live(struct xc_sr_context *ctx)
             if ( rc )
                 goto out;
             rc = send_dirty_pages(ctx, stats.dirty_count);
-
             if ( rc )
                 goto out;
         }
@@ -646,9 +595,6 @@ static int send_memory_live(struct xc_sr_context *ctx)
             rc = -1;
             goto out;
         }
-
-        if ( ctx->migration_phase )
-            clear_virtual_devices_memory(ctx);
 
         policy_stats->dirty_count = stats.dirty_count;
 
@@ -763,9 +709,6 @@ static int suspend_and_send_dirty(struct xc_sr_context *ctx)
             goto out;
         }
     }
-
-    if ( ctx->migration_phase )
-        clear_virtual_devices_memory(ctx);
 
     rc = send_dirty_pages(ctx, stats.dirty_count + ctx->save.nr_deferred_pages);
     if ( rc )
