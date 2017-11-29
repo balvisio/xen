@@ -431,17 +431,28 @@ static int send_specific_pages(struct xc_sr_context *ctx, uint64_t value)
 static int send_virtual_devices_and_params(struct xc_sr_context *ctx)
 {
     xc_interface *xch = ctx->xch;
-    uint64_t i = 0;
-    int rc = 0;
+    xen_pfn_t pfn;
+    uint64_t value;
+    int rc;
 
     xc_set_progress_prefix(xch, "Frames");
 
-    for( i = 0xfeff2; i < 0xff000; i++ )
-    {
-        rc = send_specific_pages(ctx, i);
-          if( rc )
+   rc = xc_hvm_param_get(xch, ctx->domid, HVM_PARAM_IOREQ_SERVER_PFN, &value);
+
+   if ( rc ) {
+       fprintf(stderr, "BRUNO: Getting error hvm_param_get\n");
+       goto out;
+   }
+
+   fprintf(stderr,"X86_HVM_END_SPECIAL_REGION: %u\n", X86_HVM_END_SPECIAL_REGION);
+   fprintf(stderr, "value: %" PRIu64 "\n", value);
+   for( pfn = value; pfn < X86_HVM_END_SPECIAL_REGION; pfn++ )
+   {
+        fprintf(stderr, "pfn: %lu\n", pfn);
+        rc = send_specific_pages(ctx, pfn);
+        if( rc )
             goto out;
-    }
+   }
 
    rc = ctx->save.ops.local_disks(ctx);
  out:
@@ -1035,7 +1046,7 @@ int xc_domain_save(xc_interface *xch, int io_fd, uint32_t dom,
            stream_type == XC_MIG_STREAM_COLO);
 
     /* Sanity checks for callbacks. */
-    /* The disk mirror qemu stream doesn't enable/disable qemu log */
+    /* The disk mirror stream doesn't enable/disable qemu log */
     if ( hvm && ctx.migration_phase != MIGRATION_PHASE_MIRROR_DISK )
         assert(callbacks->switch_qemu_logdirty);
     if ( ctx.save.checkpointed )
